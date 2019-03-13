@@ -1,0 +1,9 @@
+- hosts: "{{ target_server }}"
+  roles:
+    - java-install
+    - linux-oracle
+    - oracle-install
+    - migrate-archives
+    - app-install
+    - db-create-multi
+    - app-config

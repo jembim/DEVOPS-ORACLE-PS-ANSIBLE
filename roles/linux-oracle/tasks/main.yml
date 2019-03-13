@@ -1,0 +1,169 @@
+################################################################################
+### ==> Task Required for Configure Linux to host Oracle Database 12c
+##################################################################################
+
+- block:
+  - name: Download epel package
+    get_url:
+      url: https://dl.fedoraproject.org/pub/epel/epel-release-latest-6.noarch.rpm
+      dest: /tmp
+      mode: u+x
+    changed_when: False
+
+  - name: Configure epel
+    command: rpm -Uvh /tmp/epel-release-latest-6.noarch.rpm
+    failed_when: False
+    changed_when: False
+    args:
+      warn: False
+
+  - name: Download oracle dbms 12cR1 preinstall package
+    get_url: url="{{ oracle_yum_url }}{{ item }}" dest="/tmp" mode="u+x"
+    with_items:
+      - "{{ oracle_db12cR1_preinstall_pkg }}"
+      - "{{ kernel_uek_pkg }}"
+
+  - name: Configure kenrnel uek
+    command: "rpm -ivh /tmp/{{ kernel_uek_pkg }} --justdb --nodeps"
+    changed_when: False
+    failed_when: False
+    args:
+      warn: False
+
+  - name: Install oracle rdbms 12CR1 preinstall package
+    yum:
+      name: "/tmp/{{ oracle_db12cR1_preinstall_pkg }}"
+      state: present
+    changed_when: False
+    register: preinstall
+
+  - name: Install ACL and Expect
+    yum:
+      name: "{{ item }}"
+      state: present
+    with_items:
+      - acl
+      - expect
+
+  tags: install_db,install_app
+  become: True
+  become_user: root
+
+- block:
+# ==> Configure Linux
+  - name: Install required libraries - makedepend for rms batch, pip for s3 module
+    yum: name={{ item }} state=present
+    with_items: "{{ packages_list }}"
+    changed_when: False
+
+  - name: Change kernel parameters
+    sysctl: name={{ item.key }} value={{ item.value }} state=present ignoreerrors=yes
+    with_dict: "{{ kernel_params }}"
+
+# ==> Create users and groups
+  - name: Create groups
+    group: name={{ oracle_group }} gid={{ oracle_install_gid }} state=present
+
+  - name: Add extra groups
+    group: name={{ item }} state=present
+    with_items:
+      - "{{ oracle_dba_group }}"
+      - "{{ oracle_oper_group }}"
+
+  - name: Create user
+    user: name={{ oracle_user }} uid={{ oracle_user_uid }} group={{ oracle_group }} password={{ oracle_os_user_pass }}
+
+  - name: Add extra groups
+    user: name={{ oracle_user }} groups={{ item }} append=yes
+    with_items:
+      - "{{ oracle_dba_group }}"
+      - "{{ oracle_oper_group }}"
+
+# ==> Add limits for oracle user
+  - name: Add oracle user limits
+    lineinfile: dest=/etc/security/limits.conf line={{ oracle_user }} {{ item.limit }} {{ item.type}} {{ item.value }}
+    with_items:
+      - { limit: 'soft', type: nofile, value: '{{ soft_no_file }}' }
+      - { limit: 'hard', type: nofile, value: '{{ hard_no_file }}' }
+      - { limit: 'soft', type: nproc, value: '{{ soft_nproc }}' }
+      - { limit: 'hard', type: nproc, value: '{{ hard_nproc }}' }
+      - { limit: 'soft', type: stack, value: '{{ soft_stack }}' }
+      - { limit: 'hard', type: stack, value: '{{ hard_stack }}' }
+      - { limit: 'soft', type: memlock, value: '{{ soft_memlock }}' }
+      - { limit: 'hard', type: memlock, value: '{{ hard_memlock }}' }
+
+# ==> Create Base Directories
+  - name: Change Base Folder Permission
+    file:
+      path: "/u01"
+      owner: "{{ oracle_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Create Oracle Base Directory
+    file:
+      state: directory
+      path: "{{ oracle_base }}"
+      owner: "{{ oracle_user }}"
+      group: "{{ oracle_group }}"
+
+# ==> Create Installer Directory
+  - name: Create Database Installer Directory
+    file:
+      state: directory
+      path: "{{ database_install_dir }}"
+      owner: "{{ oracle_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Create Database Scripts Directory
+    file:
+      state: directory
+      path: "{{ database_install_dir }}/scripts"
+      owner: "{{ oracle_user }}"
+      group: "{{ oracle_group }}"
+
+# ==> Create Relative SQL Directories <== #
+  - name: Create Oradata Directory
+    file:
+      state: directory
+      path: "{{ oradata_dir }}"
+      owner: "{{ oracle_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Create PDBSEED Directory
+    file:
+      state: directory
+      path: "{{ oradata_dir }}/{{ database_sid }}/pdbseed"
+      owner: "{{ oracle_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Create DB Logs Directory
+    file:
+      state: directory
+      path: "{{ oradata_dir }}/{{ database_sid }}/logs"
+      owner: "{{ oracle_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Create PDB Directory
+    file:
+      state: directory
+      path: "{{ oradata_dir }}/{{ database_sid }}/{{ database_pdb_name }}"
+      owner: "{{ oracle_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Create Audit File Dest Directory
+    file:
+      state: directory
+      path: "{{ oracle_base }}/admin/{{ database_sid }}/adump"
+      owner: "{{ oracle_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Create Fast Recovery Area Directory
+    file:
+      state: directory
+      path: "{{ oracle_base }}/fast_recovery_area"
+      owner: "{{ oracle_user }}"
+      group: "{{ oracle_group }}"
+
+  tags: install_db
+  become: True
+  become_user: root

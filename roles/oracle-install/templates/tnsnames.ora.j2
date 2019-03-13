@@ -1,0 +1,23 @@
+{{ database_sid }} =
+  (DESCRIPTION =
+    (ADDRESS = (PROTOCOL = TCP)(HOST = ##HOSTNAME## )(PORT = {{ db_port }}))
+    (CONNECT_DATA =
+      (SERVER = DEDICATED)
+      (SERVICE_NAME = {{ database_sid }})
+    )
+  )
+
+{{ database_pdb_name }} =
+  (DESCRIPTION =
+    (ADDRESS = (PROTOCOL = TCP)(HOST = ##HOSTNAME## )(PORT = {{ db_port }}))
+    (CONNECT_DATA =
+      (SERVER = DEDICATED)
+      (SERVICE_NAME = {{ database_pdb_name }})
+    )
+  )
+
+
+
+LISTENER_RIBDB =
+  (ADDRESS = (PROTOCOL = TCP)(HOST = ##HOSTNAME##)(PORT = {{ db_port }}))
+

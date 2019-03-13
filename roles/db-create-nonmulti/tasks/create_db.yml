@@ -1,0 +1,131 @@
+#######################
+#==> SQL EXECUTION <==#
+#######################
+
+- block:
+# ==> Creating Oracle Instance (createdb.sql)
+  - name: Create Oracle Instance (createdb.sql)
+    shell: 'echo "@{{ database_scripts }}/createdb.sql" | sqlplus / as sysdba'
+    async: 900
+    poll: 10
+    environment:
+      ORACLE_SID: '{{ database_sid }}'
+      ORACLE_HOME: '{{ oracle_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ oracle_home }}/bin"
+
+  - name: Create Catalog Views and Utility Tablespaces (utlspace.sql)
+    shell: 'echo "@{{ database_scripts }}/utlspace.sql" | sqlplus / as sysdba'
+    environment:
+      ORACLE_SID: '{{ database_sid }}'
+      ORACLE_HOME: '{{ oracle_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ oracle_home }}/bin"
+
+  - name: Create PS.PSDBOWNER Table (dbowner.sql)
+    shell: 'echo "@{{ database_scripts }}/dbowner.sql" | sqlplus / as sysdba'
+    environment:
+      ORACLE_SID: '{{ database_sid }}'
+      ORACLE_HOME: '{{ oracle_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ oracle_home }}/bin"
+
+  - name: Start Listener
+    shell: lsnrctl start "{{ database_sid }}"
+    environment:
+      ORACLE_SID: '{{ database_sid }}'
+      ORACLE_HOME: '{{ oracle_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ oracle_home }}/bin"
+    register: lsnr
+
+  - debug: var=lsnr
+
+  - name: Wait until the Listener has completely started
+    pause:
+      minutes: 1
+
+  tags: create_db_a
+  become: True
+  become_user: "{{ oracle_user }}"
+
+- block:
+# ==> Creating Application-Specific Dbspaces and Tablespaces (HCM)
+  - name: PeopleTools SQL (ptddl.sql)
+    shell: 'echo "@{{ database_scripts }}/ptddl.sql" | sqlplus / as sysdba'
+    environment:
+      ORACLE_SID: '{{ database_sid }}'
+      ORACLE_HOME: '{{ oracle_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ oracle_home }}/bin"
+
+  - name: Create Application-Specific Dbspaces and Tablespaces (xxddl.sql)
+    shell: 'echo "@{{ database_scripts }}/hcddl.sql" | sqlplus / as sysdba'
+    environment:
+      ORACLE_SID: '{{ database_sid }}'
+      ORACLE_HOME: '{{ oracle_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ oracle_home }}/bin"
+
+  tags: hcm_db
+  become: True
+  become_user: "{{ oracle_user }}"
+
+- block:
+# ==> Creating Application-Specific Dbspaces and Tablespaces (FSCM)
+  - name: PeopleTools SQL (ptddl.sql)
+    shell: 'echo "@{{ database_scripts }}/ptddl.sql" | sqlplus / as sysdba'
+    environment:
+      ORACLE_SID: '{{ database_sid }}'
+      ORACLE_HOME: '{{ oracle_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ oracle_home }}/bin"
+
+  - name: Create Application-Specific Dbspaces and Tablespaces (xxddl.sql)
+    shell: 'echo "@{{ database_scripts }}/epddl.sql" | sqlplus / as sysdba'
+    environment:
+      ORACLE_SID: '{{ database_sid }}'
+      ORACLE_HOME: '{{ oracle_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ oracle_home }}/bin"
+
+  tags: fscm_db
+  become: True
+  become_user: "{{ oracle_user }}"
+
+- block:
+# ==> Creating PeopleSoft Database Roles (psroles.sql)
+  - name: Creating PeopleSoft Database Roles (psroles.sql)
+    shell: 'echo "@{{ database_scripts }}/psroles.sql" | sqlplus / as sysdba'
+    environment:
+      ORACLE_SID: '{{ database_sid }}'
+      ORACLE_HOME: '{{ oracle_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ oracle_home }}/bin"
+
+# ==> Creating the PeopleSoft Database Owner ID (psadmin.sql)
+  - name: Generate bash script for psadmin.sql
+    template:
+      src: psadmin.sh.j2 
+      dest: "{{ database_scripts }}/psadmin.sh"
+      owner: "{{ oracle_user }}"
+      group: "{{ oracle_group }}"
+      mode: 0755
+
+  - name: Creating the PeopleSoft Database Owner ID (psadmin.sql)
+    shell: "{{ database_scripts }}/psadmin.sh"
+    environment:
+      ORACLE_SID: '{{ database_sid }}'
+      ORACLE_HOME: '{{ oracle_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ oracle_home }}/bin"
+
+# ==> Creating the Connect ID
+  - name: Generate bash script for connect.sql
+    template:
+      src: connect.sh.j2
+      dest: "{{ database_scripts }}/connect.sh"
+      owner: "{{ oracle_user }}"
+      group: "{{ oracle_group }}"
+      mode: 0755
+
+  - name: Creating the Connect ID (connect.sql)
+    shell: "{{ database_scripts }}/connect.sh"
+    environment:
+      ORACLE_SID: '{{ database_sid }}'
+      ORACLE_HOME: '{{ oracle_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ oracle_home }}/bin"
+
+  tags: create_db_b
+  become: True
+  become_user: "{{ oracle_user }}"

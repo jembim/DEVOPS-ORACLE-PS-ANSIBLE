@@ -1,0 +1,194 @@
+# ==> ARTIFACT DIRECTORIES <== #
+db_artifact_dir: "/var/run/artifact/store/database_12c"
+client_artifact_dir: "/var/run/artifact/store/database_client"
+wl_artifact_dir: "/var/run/artifact/store/weblogic_12c"
+tux_artifact_dir: "/var/run/artifact/store/tuxedo"
+pt_artifact_dir: "/var/run/artifact/store/peopletools"
+patch_artifact_dir: "/var/run/artifact/store/peoplepatch"
+hcm_artifact_dir: "/var/run/artifact/store/hcm_92"
+fscm_artifact_dir: "/var/run/artifact/store/fscm_92"
+java_rpm_dir: "/var/run/artifact/store/jdk_1.8"
+java_rpm_dir2: "/var/run/artifact/store/jdk_1.7"
+scripts_dir: "/var/run/artifact/store/scripts"
+projects_dir: "/var/run/artifact/store/project"
+# ==> ARTIFACT *.ZIP <== #
+installer_archives:
+  - V46095-01_1of2.zip
+  - V46095-01_2of2.zip
+
+client_archive: 'V46097-01.zip'
+wl_archive: 'V44413-01.zip'
+tux_archive: 'V44944-01.zip'
+pt_archives:
+  - V97790-01_1of4.zip
+  - V97790-01_2of4.zip
+  - V97790-01_3of4.zip
+  - V97790-01_4of4.zip
+
+patch_archive: 'PT85514.zip'
+hcm_archive: 'V100591-01.zip'
+fscm_archive: 'V270186-01.zip'
+project: 'projects_pt85514.zip'
+
+# ==> INSTALLER FILES < ==#
+mod_files:
+  - setup.bat
+  - setup.sh
+
+mod_tools:
+  - setup.aix
+  - setup.exe
+  - setup.hp-ia64
+  - setup.linux
+  - setup.solaris
+  - setup.solaris-x86_64
+  - setup.zlinux
+
+mod_patch:
+  - setup.aix
+  - setup.hp-ia64
+  - setup.linux
+  - setup.solaris
+  - setup.solaris-x86_64
+  - setup.zlinux
+
+sql_files:
+  - connect.sql
+  - createdbcdb.sql
+  - createpdb.sql
+  - dbowner.sql
+  - psadmin.sql
+  - psroles2.sql
+  - psroles.sql
+  - ptddl.sql
+  - ptddlupg.sql
+  - ptperlcat.sh
+  - upggrant.sql
+  - utlspace.sql
+
+sql_files_b:
+  - connect.sql
+  - createdb.sql
+  - dbowner.sql
+  - psadmin.sql
+  - psroles.sql
+  - ptddl.sql
+  - ptddlupg.sql
+  - rollback.sql
+  - ts841.sql
+  - updstats.sql
+  - upggrant.sql
+  - utlspace.sql
+
+# ==> JAVA <== #
+java_rpm_file: jdk-8u121-linux-x64.rpm
+java_rpm_file2: jdk-7u80-linux-x64.rpm
+
+java_location: "jdk1.8.0_74/bin/java"
+java_location2: "jdk1.7.0_80/bin/java"
+java_symlink: "/usr/bin/java"
+
+# ==================== #
+# ==> LINUX-ORACLE <== #
+# ==================== #
+oracle_yum_url: "http://public-yum.oracle.com/repo/OracleLinux/OL6/latest/x86_64/getPackage/"
+oracle_db12cR1_preinstall_pkg: "oracle-rdbms-server-12cR1-preinstall-1.0-14.el6.x86_64.rpm"
+kernel_uek_pkg: "kernel-uek-2.6.32-400.37.9.el6uek.x86_64.rpm"
+
+packages_list:
+  - python-pip
+  - makedepend
+
+kernel_params:
+# Shared memory and semaphore
+# look for document 226209.1 in oracle support for details
+  kernel.sem: 250 32000 100 128
+  kernel.shmmni: 4096
+# 1.5 GB Shared memory 500mb for linux kernel (for 2GB virtual machine)
+  kernel.shmall: 2097152
+# 1 GB Half of the physical memory (for 2GB virtual machine)
+  kernel.shmmax: 4125722624
+# For 1Gbps with 1ms latency 16MB buffer
+  net.core.rmem_max: 16777216
+  net.core.wmem_max: 16777216
+  net.ipv4.tcp_rmem: 4096 87380 16777216
+  net.ipv4.tcp_wmem: 4096 65536 16777216
+# Minimize swap file use
+  vm.swappiness: 10
+  vm.dirty_background_ratio: 5
+  vm.dirty_ratio: 10
+# Max open file descriptors 512 * db processes + room for os
+  fs.file-max: 409600
+# Shorten keep alive of connections
+  net.ipv4.tcp_keepalive_time: 300
+  net.ipv4.tcp_keepalive_intvl: 60
+  net.ipv4.tcp_keepalive_probes: 10
+# maximize port range
+  net.ipv4.ip_local_port_range: 9000 65500
+
+# ORACLE USERS & GROUPS
+oracle_group: 'oinstall'
+oracle_install_gid: '501'
+oracle_dba_group: 'dba'
+oracle_oper_group: 'oper'
+oracle_user: 'oracle'
+app_user: 'applmgr'
+oracle_user_uid: '502'
+oracle_os_user_pass: 'password1'
+database_system_pass: 'manager'
+db_type: 'ORACLE'
+
+# LIMITS FOR ORACLE USERS
+soft_no_file: 4096
+hard_no_file: 65536
+soft_nproc: 2047
+hard_nproc: 16384
+soft_stack: 10240
+hard_stack: 32768
+# mem lock 90% of RAM
+soft_memlock: 1887437
+hard_memlock: 1887437
+
+# ORACLE DIRECTORIES
+oracle_base: '/u01/oracle/oracle'
+app_base: '/u01/oracle/app'
+oradata_dir: '{{ oracle_base }}/oradata'
+database_install_dir: '{{ oracle_base }}/installer'
+app_install_dir: '{{ app_base }}/installer'
+database_scripts: '{{ database_install_dir }}/scripts'
+application_scripts: '{{ app_install_dir }}/scripts'
+tuxedo_home: '{{ app_base }}/tuxedo'
+pt_home: '{{ app_base }}/peopletools_855'
+hcm_home: '{{ app_base }}/hcm_92'
+fscm_home: '{{ app_base }}/fscm_92'
+ps_cfg_home: '{{ app_base }}/ps_config'
+wl_home: '{{ app_base }}/middleware'
+client_home: '{{ app_base }}/product/12.1.0/client'
+# ====================== #
+# ==> ORACLE-INSTALL <== #
+# ====================== #
+# ==> SWAP SPACE
+dev_zero: /dev/zero # dev/zero file provides as many null characters required to build swapfilex
+swap_location: /swapfile
+swap_bs: 1024
+swap_count: 563200
+app_swap_count: 15999996
+
+oracle_install_responseFileVersion: '/oracle/install/rspfmt_dbinstall_response_schema_v12.1.0'
+install_db: INSTALL_DB_SWONLY
+oracle_edition: 'EE'
+oracle_database_type: 'GENERAL_PURPOSE'
+oracle_memory_option: 'true'
+oracle_decline_security_updates: 'true'
+
+inventory_location: '/u01/{{ oracle_user }}/oraInventory'
+oracle_home: '{{ oracle_base }}/product/12.1.0'
+oracle_charset: 'AL32UTF8'
+
+# ==> PEOPLESOFT USERS
+ps_user_pass: 'Accenture01'
+ps_access_id: 'psaccess'
+ps_access_pass: 'password1'
+ps_connect_id: 'pconnect'
+ps_connect_pass: 'password1'
+

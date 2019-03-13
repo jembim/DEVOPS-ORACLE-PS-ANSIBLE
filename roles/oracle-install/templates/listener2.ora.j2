@@ -1,0 +1,22 @@
+{{ database_sid }}=
+ (DESCRIPTION_LIST =
+    (DESCRIPTION =
+      (ADDRESS_LIST =
+        (ADDRESS = (PROTOCOL = TCP)(HOST = ##HOSTNAME##)(PORT = {{ db_port }}) (IP = FIRST)))
+      (ADDRESS_LIST =
+        (ADDRESS = (PROTOCOL = IPC)(KEY = extproc)))
+    )
+  )
+
+SID_LIST_{{ database_sid }}=
+   (SID_LIST=
+     (SID_DESC=
+        (ORACLE_HOME={{ oracle_home }})
+        (SID_NAME={{ database_sid }})
+     )
+     (SID_DESC =
+      (SID_NAME = PLSExtProc )
+      (ORACLE_HOME={{ oracle_home }})
+      (PROGRAM = extproc)
+    )
+    )

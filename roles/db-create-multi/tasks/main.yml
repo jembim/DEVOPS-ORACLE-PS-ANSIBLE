@@ -1,0 +1,6 @@
+---
+- include: edit_sql.yml
+- include: create_db.yml
+- include: import.yml
+- include: hcm_setup.yml
+- include: fscm_setup.yml

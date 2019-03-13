@@ -1,0 +1,74 @@
+- block:
+# ==> Source PSCONFIG.SH
+  - name: Edit Environment File (psconfig.sh)
+    replace:
+      destfile: "{{ pt_home }}/psconfig.sh"
+      regexp: '\$HOME'
+      replace: "$PS_HOME"
+
+
+  - name: Edit Environment File (psconfig.sh)
+    replace:
+      destfile: "{{ pt_home }}/psconfig.sh"
+      regexp: "`/bin/pwd`"
+      replace: "{{ pt_home }}"
+
+  tags: ps_env
+  become: True
+  become_user: "{{ app_user }}"
+
+- block:
+# ==> Generate Data Mover Scripts (HCM)
+  - name: Create Import Log Directory
+    file:
+      state: directory
+      path: "{{ hcm_home }}/log"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Generate Data Mover Import Scripts
+    template:
+      src: hcm92.dms.j2
+      dest: "{{ app_install_dir }}/scripts/hcm92.dms"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Run Data Mover Import Scripts
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && {{ pt_home }}/bin/psdmtx -CT {{ db_type }} -CD {{ database_sid }} -CO {{ ps_access_id }} -CP {{ ps_access_pass }} -CI {{ ps_connect_id }} -CW {{ ps_connect_pass }} -FP {{ app_install_dir }}/scripts/hcm92.dms"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+
+  tags: import_db_hcm
+  become: True
+  become_user: "{{ app_user }}"
+
+- block:
+# ==> Generate Data Mover Scripts (FSCM)
+  - name: Create Import Log Directory
+    file:
+      state: directory
+      path: "{{ fscm_home }}/log"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Generate Data Mover Import Scripts
+    template:
+      src: fscm92.dms.j2
+      dest: "{{ app_install_dir }}/scripts/fscm92.dms"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Run Data Mover Import Scripts
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && {{ pt_home }}/bin/psdmtx -CT {{ db_type }} -CD {{ database_sid }} -CO {{ ps_access_id }} -CP {{ ps_access_pass }} -CI {{ ps_connect_id }} -CW {{ ps_connect_pass }} -FP {{ app_install_dir }}/scripts/fscm92.dms"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ fscm_home }}"
+
+  tags: import_db_fscm
+  become: True
+  become_user: "{{ app_user }}"

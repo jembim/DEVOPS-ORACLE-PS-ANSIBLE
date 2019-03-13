@@ -1,0 +1,91 @@
+REM - fscm92dmoora2.dms
+REM - Created by Data Mover 8.55.09 Thu Mar 23 10:05:06 2017
+REM -
+REM - Database Platform: Oracle
+REM - Unicode Database
+REM - Selected Character Set: AL32UTF8 - AL32UTF8
+REM - Generate Latin-1 Code
+REM -
+/
+REM - PeopleSoft FIN/SCM Database - US English
+/
+SET LOG {{ fscm_home }}/log/epengs.log;
+SET INPUT {{ fscm_home }}/data/epengs.db;
+SET COMMIT 30000;
+SET NO VIEW;
+SET NO SPACE;
+SET NO TRACE;
+SET UNICODE ON;
+SET IGNORE_DUPS;
+SET ENABLED_DATATYPE 9.2;
+IMPORT *;
+
+REM - PeopleSoft FIN/SCM Database - US English
+/
+SET LOG {{ fscm_home }}/log/epengl.log;
+SET INPUT {{ fscm_home }}/data/epengl.db;
+SET COMMIT 30000;
+SET NO VIEW;
+SET NO SPACE;
+SET NO TRACE;
+SET UNICODE ON;
+SET IGNORE_DUPS;
+SET ENABLED_DATATYPE 9.2;
+IMPORT *;
+
+REM - Final Database cleanup
+REM -
+REM - Based on your inputs to Database Setup, you will be using
+REM - ConnectID's to connect to your PeopleSoft Application
+REM -
+/
+UPDATE PSOPRDEFN SET ACCTLOCK = 1;
+INSERT INTO PS.PSDBOWNER VALUES('{{ database_sid }}', '{{ ps_access_id }}');
+UPDATE PSSTATUS SET OWNERID = '{{ ps_access_id }}';
+UPDATE PSOPRDEFN SET SYMBOLICID = 'SYSADM1';
+UPDATE PSOPRDEFN SET PTOPERPSWDV2 = OPRID, ENCRYPTED = 0, ACCTLOCK = 0 WHERE OPRID NOT IN('{{ ps_user_id }}','PTWEBSERVER');
+UPDATE PSOPRDEFN SET PTOPERPSWDV2 = 'PTWEBSERVER', ENCRYPTED = 0, ACCTLOCK = 0 WHERE OPRID = 'PTWEBSERVER';
+UPDATE PSOPRDEFN SET PTOPERPSWDV2 = '{{ ps_user_pass }}', ENCRYPTED = 0, ACCTLOCK = 0 WHERE OPRID = '{{ ps_user_id }}';
+UPDATE PSACCESSPRFL SET ACCESSID = '{{ ps_access_id }}', SYMBOLICID = 'SYSADM1', ACCESSPSWD = '{{ ps_access_pass }}', VERSION = 0, ENCRYPTED = 0;
+UPDATE PSACCESSPROFILE SET STM_ACCESS_ID = '{{ ps_access_id }}', SYMBOLICID = 'SYSADM1', STM_ACCESS_PSWD = '{{ ps_access_pass }}', VERSION = 0, STM_ENCRYPTION_VER = 1, ENCRYPTED = 0;
+UPDATE PSOPTIONS SET LICENSE_CODE = '137fffffffffffffffffdff812n3m54', LICENSE_GROUP = '2';
+UPDATE PS_INSTALLATION SET
+PPALM='Y', AM='Y', BI='Y', TR='Y', CCM='Y', WR='Y', CA='Y', CCU='Y', DEAL='Y', PPESA='Y',
+EG='Y', EX='Y', PPFIN='Y', FP='Y', GL='Y', GM='Y', FAA='Y', FPA='Y', PRD='Y', ITAM='Y',
+INV='Y', IP='Y', WO='Y', MG='Y', DMI='Y', OM='Y', FO_PBM='Y', AP='Y', CP='Y', PGM='Y',
+PC='Y', TD='Y', PM='Y', PO='Y', QS='Y', RE='Y', AR='Y', RS='Y', RISK='Y', SP='Y',
+FO='Y', AUC='Y', SCMT='Y', PPSCM='Y', SPL='Y', CAT='Y', EB='Y', PV='Y', MPA='Y', ES='Y';
+GRANT SELECT ON PSSTATUS TO {{ ps_connect_id }};
+GRANT SELECT ON PSOPRDEFN TO {{ ps_connect_id }};
+GRANT SELECT ON PSACCESSPRFL TO {{ ps_connect_id }};
+GRANT SELECT ON PSACCESSPROFILE TO {{ ps_connect_id }};
+UPDATE PSOPTIONS SET PLATCOMPAT='N';
+
+REM - ENCRYPT PASSWORD
+/
+SET LOG {{ fscm_home }}/log/encrypt.log;
+ENCRYPT_PASSWORD *;
+
+DELETE FROM PSSECOPTIONS;
+INSERT INTO PSSECOPTIONS (PSWD_CNTRL_ON, PSWDEXPIRESDAYS, PSWDWARNDAYS,
+MINPSWDLENGTH, PSWDREQSPECIAL, PSWDREQLOWER, PSWDREQUPPER, PSWDREQDIGITS,
+ALLOWOPRID, ALLOWPRIEMAIL, LOGINATTEMPTS, PT_HINTDELAY, LOCKOUTDURATION,
+PURGE_DAYS, PASSWORD_HISTORY) VALUES (' ',180,5,8,0,0,0,0,0,0,5,0,0,0,0);
+UPDATE PSSIGNONPPC SET ENABLED = 'Y' WHERE RECNAME='FUNCLIB_PWDCNTL' AND
+FIELDNAME = 'PWDCNTL' AND EVENTNAME = 'FieldChange' AND FUNCNAME = 'Password_Controls';
+UPDATE PSOPRDEFN SET LASTUPDDTTM = %CurrentDateTimeIn; 
+
+REM - CREATE TRIGGERS
+/
+SET LOG {{ fscm_home }}/log/triggers.log;
+CREATE_TRIGGER *;
+
+REM - CREATE VIEWS
+/
+SET LOG {{ fscm_home }}/log/views.log;
+REPLACE_VIEW *;
+
+REM - CREATE TEMP TABLES
+/
+SET LOG {{ fscm_home }}/log/temptbls.log;
+CREATE_TEMP_TABLE *;

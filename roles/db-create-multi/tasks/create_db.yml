@@ -1,0 +1,224 @@
+#######################
+#==> SQL EXECUTION <==#
+#######################
+
+- block:
+# ==> Creating Root Container Database (createdbcdb.sql)
+  - name: Create Root Container Database (createdbcdb.sql)
+    shell: 'echo "@{{ database_scripts }}/createdbcdb.sql" | sqlplus / as sysdba'
+    async: 600 
+    poll: 10
+    environment:
+      ORACLE_SID: '{{ database_sid }}'
+      ORACLE_HOME: '{{ oracle_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ oracle_home }}/bin"
+
+  - name: Run ptperlcat.sh
+    shell: "{{ database_scripts }}/ptperlcat.sh"
+    environment:
+      ORACLE_SID: '{{ database_sid }}'
+      ORACLE_HOME: '{{ oracle_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ oracle_home }}/bin"
+
+  - name: Create Container Database Checker
+    shell: 'echo "select name,cdb from v\$database;" | sqlplus / as sysdba > cdb.out'
+    environment:
+      ORACLE_SID: '{{ database_sid }}'
+      ORACLE_HOME: '{{ oracle_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ oracle_home }}/bin"
+
+  tags: create_cdb
+  become: True
+  become_user: "{{ oracle_user }}"
+
+- block:
+  - name: Shutdown Running PDB
+    shell: 'echo "ALTER PLUGGABLE DATABASE ALL CLOSE IMMEDIATE;" | sqlplus / as sysdba'
+    environment:
+      ORACLE_SID: '{{ database_sid }}'
+      ORACLE_HOME: '{{ oracle_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ oracle_home }}/bin"
+
+  tags: stop_pdb
+  become: True
+  become_user: "{{ oracle_user }}"
+
+- block:
+  - name: Startup PDB
+    shell: 'echo "ALTER PLUGGABLE DATABASE ALL EXCEPT {{ database_pdb_name }} OPEN READ WRITE;" | sqlplus / as sysdba'
+    environment:
+      ORACLE_SID: '{{ database_sid }}'
+      ORACLE_HOME: '{{ oracle_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ oracle_home }}/bin"
+
+  tags: start_pdb
+  become: True
+  become_user: "{{ oracle_user }}"    
+
+- block:
+# ==> Creating Pluggable Database (createpdb.sql)
+  - name: Create Pluggable Database (createpdb.sql)
+    shell: 'echo "@{{ database_scripts }}/createpdb.sql" | sqlplus / as sysdba'
+    async: 300
+    poll: 10
+    environment:
+      ORACLE_SID: '{{ database_sid }}'
+      ORACLE_HOME: '{{ oracle_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ oracle_home }}/bin"
+
+  - name: Create Pluggable Database Checker
+    shell: 'echo "select name, open_mode from v\$pdbs;" | sqlplus / as sysdba > pdb.out'
+    environment:
+      ORACLE_SID: '{{ database_sid }}'
+      ORACLE_HOME: '{{ oracle_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ oracle_home }}/bin"
+
+  - name: Alter Session Set Container
+    shell: 'echo "ALTER SESSION SET CONTAINER = {{ database_pdb_name }}" | sqlplus / as sysdba'
+    environment:
+      ORACLE_SID: '{{ database_sid }}'
+      ORACLE_HOME: '{{ oracle_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ oracle_home }}/bin"
+
+  tags: create_pdb
+  become: True
+  become_user: "{{ oracle_user }}"
+
+- block:
+  - name: Start Listener
+    shell: lsnrctl start "{{ database_sid }}"
+    environment:
+      ORACLE_SID: '{{ database_sid }}'
+      ORACLE_HOME: '{{ oracle_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ oracle_home }}/bin"
+    register: lsnr
+
+  - debug: var=lsnr
+
+  - name: Wait until the Listener has completely started
+    pause:
+      minutes: 5
+
+  tags: start_lsnr
+  become: True
+  become_user: "{{ oracle_user }}"
+
+- block:
+# ==> Creating Catalog Views and Utility Tablespaces (utlspace.sql)
+  - name: Create Catalog Views and Utility Tablespaces (utlspace.sql)
+    shell: 'echo "@{{ database_scripts }}/utlspace.sql" | sqlplus / as sysdba'
+    environment:
+      ORACLE_SID: '{{ database_sid }}'
+      ORACLE_HOME: '{{ oracle_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ oracle_home }}/bin"
+
+# ==> Creating PS.PSDBOWNER Table (dbowner.sql)
+  - name: Run PUPBLD.SQL
+    shell: 'echo "@{{ oracle_home }}/sqlplus/admin/pupbld.sql" | sqlplus system/manager@{{ database_pdb_name }}'
+    environment:
+      ORACLE_SID: '{{ database_sid }}'
+      ORACLE_HOME: '{{ oracle_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ oracle_home }}/bin"
+
+  - name: Create PS.PSDBOWNER Table (dbowner.sql)
+    shell: 'echo "@{{ database_scripts }}/dbowner.sql" | sqlplus system/manager@{{ database_pdb_name }}'
+    environment:
+      ORACLE_SID: '{{ database_sid }}'
+      ORACLE_HOME: '{{ oracle_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ oracle_home }}/bin"
+
+  tags: create_db_a
+  become: True
+  become_user: "{{ oracle_user }}"
+
+- block:
+# ==> Creating Application-Specific Dbspaces and Tablespaces (HCM)
+  - name: PeopleTools SQL (ptddl.sql)
+    shell: 'echo "@{{ database_scripts }}/ptddl.sql" | sqlplus system/manager@{{ database_pdb_name }}'
+    environment:
+      ORACLE_SID: '{{ database_sid }}'
+      ORACLE_HOME: '{{ oracle_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ oracle_home }}/bin"
+
+  - name: Create Application-Specific Dbspaces and Tablespaces (xxddl.sql)
+    shell: 'echo "@{{ database_scripts }}/hcddl.sql" | sqlplus system/manager@{{ database_pdb_name }}'
+    environment:
+      ORACLE_SID: '{{ database_sid }}'
+      ORACLE_HOME: '{{ oracle_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ oracle_home }}/bin"
+
+  tags: hcm_db
+  become: True
+  become_user: "{{ oracle_user }}"
+
+- block:
+# ==> Creating Application-Specific Dbspaces and Tablespaces (FSCM)
+  - name: PeopleTools SQL (ptddl.sql)
+    shell: 'echo "@{{ database_scripts }}/ptddl.sql" | sqlplus system/manager@{{ database_pdb_name }}'
+    environment:
+      ORACLE_SID: '{{ database_sid }}'
+      ORACLE_HOME: '{{ oracle_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ oracle_home }}/bin"
+
+  - name: Create Application-Specific Dbspaces and Tablespaces (xxddl.sql)
+    shell: 'echo "@{{ database_scripts }}/epddl.sql" | sqlplus system/manager@{{ database_pdb_name }}'
+    environment:
+      ORACLE_SID: '{{ database_sid }}'
+      ORACLE_HOME: '{{ oracle_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ oracle_home }}/bin"
+
+  tags: fscm_db
+  become: True
+  become_user: "{{ oracle_user }}"
+
+- block:
+# ==> Creating PeopleSoft Database Roles (psroles.sql)
+  - name: Creating PeopleSoft Database Roles (psroles.sql)
+    shell: 'echo "@{{ database_scripts }}/psroles.sql" | sqlplus system/manager@{{ database_pdb_name }}'
+    environment:
+      ORACLE_SID: '{{ database_sid }}'
+      ORACLE_HOME: '{{ oracle_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ oracle_home }}/bin"
+
+  - name: Creating PeopleSoft Database Roles (psroles2.sql)
+    shell: 'echo "@{{ database_scripts }}/psroles2.sql" | sqlplus / as sysdba'
+    environment:
+      ORACLE_SID: '{{ database_sid }}'
+      ORACLE_HOME: '{{ oracle_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ oracle_home }}/bin"
+
+# ==> Creating the PeopleSoft Database Owner ID (psadmin.sql)
+  - name: Generate bash script for psadmin.sql
+    template:
+      src: psadmin.sh.j2 
+      dest: "{{ database_scripts }}/psadmin.sh"
+      owner: "{{ oracle_user }}"
+      group: "{{ oracle_group }}"
+      mode: 0755
+
+  - name: Creating the PeopleSoft Database Owner ID (psadmin.sql)
+    shell: "{{ database_scripts }}/psadmin.sh"
+    environment:
+      ORACLE_SID: '{{ database_sid }}'
+      ORACLE_HOME: '{{ oracle_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ oracle_home }}/bin"
+    
+# ==> Creating the Connect ID
+  - name: Generate bash script for connect.sql
+    template:
+      src: connect.sh.j2
+      dest: "{{ database_scripts }}/connect.sh"
+      owner: "{{ oracle_user }}"
+      group: "{{ oracle_group }}"
+      mode: 0755
+
+  - name: Creating the Connect ID (connect.sql)
+    shell: "{{ database_scripts }}/connect.sh"
+    environment:
+      ORACLE_SID: '{{ database_sid }}'
+      ORACLE_HOME: '{{ oracle_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ oracle_home }}/bin"
+
+  tags: create_db_b
+  become: True
+  become_user: "{{ oracle_user }}"

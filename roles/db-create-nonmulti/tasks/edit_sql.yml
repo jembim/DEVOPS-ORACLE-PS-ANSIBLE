@@ -1,0 +1,138 @@
+#################################
+# ==> EDIT DATABASE SCRIPTS <== #
+#################################
+# ==> Transfer SQL Files to DB server
+
+- block:
+  - name: Fetch SQL scripts
+    fetch:
+      src: "{{ pt_home }}/scripts/unix/{{ item }}"
+      dest: "{{ scripts_dir }}/"
+      flat: yes
+    with_items: '{{ sql_files_b }}'
+
+  - name: Fetch SQL scripts
+    fetch:
+      src: "{{ hcm_home }}/scripts/unix/hcddl.sql"
+      dest: "{{ scripts_dir }}/"
+      flat: yes
+
+  tags: migrate_hcm
+  become: True
+  become_user: "{{ app_user }}"
+
+- block:
+  - name: Fetch SQL scripts
+    fetch:
+      src: "{{ pt_home }}/scripts/unix/{{ item }}"
+      dest: "{{ scripts_dir }}/"
+      flat: yes
+    with_items: '{{ sql_files_b }}'
+
+  - name: Fetch SQL scripts
+    fetch:
+      src: "{{ fscm_home }}/scripts/unix/epddl.sql"
+      dest: "{{ scripts_dir }}/"
+      flat: yes
+
+  tags: migrate_fscm
+  become: True
+  become_user: "{{ app_user }}"
+
+- block:
+  - name: Transfer SQL scripts to Database Server
+    copy:
+      src: "{{ scripts_dir }}/"
+      dest: "{{ database_scripts }}"
+      owner: "{{ oracle_user }}"
+      group: "{{ oracle_group }}"
+
+  tags: migrate_db
+  become: True
+  become_user: root
+
+- block:
+# ==> Create Password File
+#  - name: Create Oracle Password File (orapwd utility)
+#    command: "{{ oracle_home }}/bin/orapwd file={{ oracle_home }}/dbs/{{ database_sid }}pwd password=manager entries=5"
+
+# ==> Create INIT.ORA
+  - name: Generate INIT.ORA
+    template:
+      src: init.ora.j2
+      dest: "{{ oracle_home }}/dbs/init{{ database_sid }}.ora"
+      owner: "{{ oracle_user }}"
+      group: "{{ oracle_group }}"
+
+  tags: init_ora
+  become: True
+  become_user: "{{ oracle_user }}"
+
+- block:
+
+  - name: Edit CREATEDB.SQL
+    replace: 
+      destfile: "{{ database_scripts }}/createdb.sql"
+      regexp: "{{ item.old }}"
+      replace: "{{ item.new }}"
+    with_items:
+        - { old: '/u01', new: "{{ oracle_base }}" }
+        - { old: '<SID>', new: "{{ database_sid }}" }
+        - { old: 'WE8ISO8859P15', new: "{{ oracle_charset }}" }
+        - { old: 'REMARK startup', new: 'startup' }
+
+  - name: Edit UTLSPACE.SQL
+    replace: 
+      destfile: "{{ database_scripts }}/utlspace.sql"
+      regexp: "{{ item.old }}"
+      replace: "{{ item.new }}"
+    with_items:
+        - { old: '/u03', new: "{{ oracle_base }}" }
+        - { old: '<SID>', new: "{{ database_sid }}" }
+
+  - name: Edit PTDDL.SQL
+    replace: 
+      destfile: "{{ database_scripts }}/ptddl.sql"
+      regexp: "{{ item.old }}"
+      replace: "{{ item.new }}"
+    with_items:
+        - { old: '/u04', new: "{{ oracle_base }}" }
+        - { old: '<SID>', new: "{{ database_sid }}" }
+        - { old: 'REMARK', new: '' }
+
+  tags: prepare_script
+  become: True
+  become_user: "{{ oracle_user }}"
+
+# ==> Edit HCDDL.SQL (HCM)
+- block:
+  - name: Edit HCDDL.sql
+    replace: 
+      destfile: "{{ database_scripts }}/hcddl.sql"
+      regexp: "{{ item.old }}"
+      replace: "{{ item.new }}"
+    with_items:
+        - { old: '/u04', new: "{{ oracle_base }}" }
+        - { old: '<SID>', new: "{{ database_sid }}" }
+        - { old: 'REMARK', new: '' }
+
+  tags: prepare_hcm
+  become: True
+  become_user: "{{ oracle_user }}"
+
+# ==> Edit EPDDL.SQL (FSCM)
+- block:
+  - name: Edit EPDDL.sql
+    replace: 
+      destfile: "{{ database_scripts }}/epddl.sql"
+      regexp: "{{ item.old }}"
+      replace: "{{ item.new }}"
+    with_items:
+        - { old: '/u04', new: "{{ oracle_base }}" }
+        - { old: '<SID>', new: "{{ database_sid }}" }
+        - { old: 'REMARK', new: '' }
+
+  tags: prepare_fscm
+  become: True
+  become_user: "{{ oracle_user }}"
+

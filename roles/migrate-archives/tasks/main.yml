@@ -1,0 +1,234 @@
+######################################
+# ==> MIGRATE INSTALLER ARCHIVES <== #
+######################################
+## => Requirements <= #
+
+# Create Swapfile
+- block:
+  - name: Check Swapfile
+    stat: path={{ swap_location }}
+    register: swapfile
+
+  - name: Create storage file
+    command: dd if={{ dev_zero }} of={{ swap_location }} bs={{ swap_bs }} count={{ app_swap_count }}
+    changed_when: False
+    when: "swapfile.stat.exists == False"
+
+  - name: Change file permission of storage file
+    file: path={{ swap_location }} mode=0600
+    when: "swapfile.stat.exists == False"
+
+  - name: Set up swap area
+    command: mkswap {{ swap_location }}
+    changed_when: False
+    when: "swapfile.stat.exists == False"
+
+  - name: Enable swap file
+    command: swapon {{ swap_location }}
+    changed_when: False
+    when: "swapfile.stat.exists == False"
+
+  - name: Append line to etc/fstab
+    lineinfile: dest=/etc/fstab line="{{ swap_location }} none swap sw 0 0"
+    when: "swapfile.stat.exists == False"
+
+  - name: Verify whether swap is actived
+    command: free -m
+    changed_when: False
+
+  - name: Display swap usage
+    command: swapon -s
+    register: swapon_summary
+    changed_when: False
+
+  - name: Debug swap usage
+    debug: var=swapon_summary
+
+# ==> Create users and groups
+  - name: Create groups
+    group: name={{ oracle_group }} state=present
+
+  - name: Create user
+    user: name={{ app_user }} group={{ oracle_group }} 
+
+# ==> Create Application Directories <== #
+  - name: Change Base Folder Permission
+    file:
+      path: "/u01"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Create Base Directory
+    file:
+      state: directory
+      path: "{{ app_base }}"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Create Installer Directory
+    file:
+      state: directory
+      path: "{{ app_install_dir }}"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Create Scripts Directory
+    file:
+      state: directory
+      path: "{{ app_install_dir }}/scripts"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Create Client Installer Directory
+    file:
+      state: directory
+      path: "{{ app_install_dir }}/db_client"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Create WebLogic Installer Directory
+    file:
+      state: directory
+      path: "{{ app_install_dir }}/weblogic"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Create Tuxedo Installer Directory
+    file:
+      state: directory
+      path: "{{ app_install_dir }}/tuxedo"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Create PeopleTools Installer Directory
+    file:
+      state: directory
+      path: "{{ app_install_dir }}/peopletools"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Create PeoplePatch Installer Directory
+    file:
+      state: directory
+      path: "{{ app_install_dir }}/peoplepatch"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Create Tuxedo Home
+    file:
+      state: directory
+      path: "{{ tuxedo_home }}"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Create PeopleTools Home
+    file:
+      state: directory
+      path: "{{ pt_home }}"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Create PeopleSoft Config Home
+    file:
+      state: directory
+      path: "{{ ps_cfg_home }}"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  tags: install_app
+  become: True
+  become_user: root
+
+# ==> Transfer Installers to Application Server
+- block:
+  - name: Copy Database Client Installer
+    copy:
+      src: "{{ client_artifact_dir }}/{{ client_archive }}"
+      dest: "{{ app_install_dir }}/db_client"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Copy WebLogic Installer
+    copy:
+      src: "{{ wl_artifact_dir }}/{{ wl_archive }}"
+      dest: "{{ app_install_dir }}/weblogic"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Copy Tuxedo Installer
+    copy:
+      src: "{{ tux_artifact_dir }}/{{ tux_archive }}"
+      dest: "{{ app_install_dir }}/tuxedo"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Copy PeopleTools Installer
+    copy:
+      src: "{{ pt_artifact_dir }}/{{ item }}"
+      dest: "{{ app_install_dir }}/peopletools"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+    with_items: '{{ pt_archives }}'
+
+  - name: Copy PeopleTools Patch Installer
+    copy:
+      src: "{{ patch_artifact_dir }}/{{ patch_archive }}"
+      dest: "{{ app_install_dir }}/peoplepatch"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  tags: install_app
+  become: True
+  become_user: root
+
+- block:
+  - name: Create PeopleSoft Application Home (HCM)
+    file:
+      state: directory
+      path: "{{ hcm_home }}"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Create Application Installer Directory (HCM)
+    file:
+      state: directory
+      path: "{{ app_install_dir }}/hcm"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Copy Application Installer (HCM)
+    copy:
+      src: "{{ hcm_artifact_dir }}/{{ hcm_archive }}"
+      dest: "{{ app_install_dir }}/hcm"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  tags: hcm_install
+  become: True
+  become_user: root
+
+- block:
+  - name: Create PeopleSoft Application Home (FSCM)
+    file:
+      state: directory
+      path: "{{ fscm_home }}"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Create Application Installer Directory (FSCM)
+    file:
+      state: directory
+      path: "{{ app_install_dir }}/fscm"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Copy Application Installer (FSCM)
+    copy:
+      src: "{{ fscm_artifact_dir }}/{{ fscm_archive }}"
+      dest: "{{ app_install_dir }}/fscm"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  tags: fscm_install
+  become: True
+  become_user: root

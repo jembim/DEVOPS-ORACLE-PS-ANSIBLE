@@ -1,0 +1,243 @@
+##########################################
+# ==> INSTALL APPLICATION COMPONENTS <== #
+##########################################
+# ==> DATABASE CLIENT
+- block:
+  - name: Extract Client Archives
+    unarchive:
+      src: "{{ app_install_dir }}/db_client/{{ client_archive }}"
+      dest: "{{ app_install_dir }}/db_client"
+      remote_src: true
+
+  - name: Generate Client Response Files
+    template:
+      src: client_install.rsp.j2
+      dest: "{{ app_install_dir }}/db_client/client_install.rsp"
+
+  - name: Generate OraInst.loc
+    template:
+      src: oraInst.loc.j2
+      dest: "{{ app_install_dir }}/db_client/oraInst.loc"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Execute Client Installation
+    command: "{{ app_install_dir }}/db_client/client/runInstaller -responseFile {{ app_install_dir }}/db_client/client_install.rsp -silent -invPtrLoc {{ app_install_dir }}/db_client/oraInst.loc -ignorePrereq -waitforcompletion"
+    changed_when: False
+
+  - name:
+    shell: echo "{{ multi_architecture }}" 
+    register: multi
+
+  - set_fact: tns_ora="tnsnames.ora.j2" lsnr_ora="listener.ora.j2"
+    when: multi.stdout == "TRUE"
+
+  - set_fact: tns_ora="tnsnames2.ora.j2" lsnr_ora="listener2.ora.j2"
+    when: multi.stdout == "FALSE"
+
+  - name: Generate listener.ora and tnsnames.ora
+    template:
+      src: "{{ item.old }}"
+      dest: "{{ client_home }}/network/admin/{{ item.new }}"
+    with_items:
+        - { old: '{{ lsnr_ora }}', new: 'listener.ora' }
+        - { old: '{{ tns_ora }}', new: 'tnsnames.ora' }
+
+# ==> WEBLOGIC 12C
+  - name: Extract WebLogic Archives
+    unarchive:
+      src: "{{ app_install_dir }}/weblogic/{{ wl_archive }}"
+      dest: "{{ app_install_dir }}/weblogic"
+      remote_src: true
+
+  - name: Generate WebLogic Response File
+    template:
+      src: fmw.rsp.j2
+      dest: "{{ app_install_dir }}/weblogic/fmw.rsp"
+
+  - name: Generate OraInst.loc
+    template:
+      src: oraInst.loc.j2
+      dest: "{{ app_install_dir }}/weblogic/oraInst.loc"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Execute Weblogic Installation
+    command: "/usr/java/{{ java_location2 }} -jar {{ app_install_dir }}/weblogic/fmw_12.1.3.0.0_wls.jar -silent -responseFile {{ app_install_dir }}/weblogic/fmw.rsp -invPtrLoc {{ app_install_dir }}/weblogic/oraInst.loc"
+
+# ==> TUXEDO
+  - name: Extract Tuxedo Archives
+    unarchive:
+      src: "{{ app_install_dir }}/tuxedo/{{ tux_archive }}"
+      dest: "{{ app_install_dir }}/tuxedo"
+      remote_src: true
+
+  - name: Generate Tuxedo Response File
+    template:
+      src: tux_install.rsp.j2
+      dest: "{{ app_install_dir }}/tuxedo/tux_install.rsp"
+
+  - name: Generate OraInst.loc
+    template:
+      src: oraInst.loc.j2
+      dest: "{{ app_install_dir }}/tuxedo/oraInst.loc"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Execute Tuxedo Installation
+    command: "{{ app_install_dir }}/tuxedo/Disk1/install/runInstaller -responseFile {{ app_install_dir }}/tuxedo/tux_install.rsp -silent -invPtrLoc {{ app_install_dir }}/tuxedo/oraInst.loc -ignorePrereq -waitforcompletion"
+    changed_when: False
+
+# ==> PEOPLETOOLS 8.55
+  - name: Extract PeopleTools Installation
+    unarchive:
+      src: "{{ app_install_dir }}/peopletools/{{ item }}"
+      dest: "{{ app_install_dir }}/peopletools"
+      remote_src: true
+    with_items: '{{ pt_archives }}'
+
+  - name: Modify Installer files
+    file:
+      path: "{{ app_install_dir }}/peopletools/Disk1/{{ item }}"
+      mode: 0755
+    with_items: '{{ mod_files }}'
+
+  - name: Modify Installer files
+    file:
+      path: "{{ app_install_dir }}/peopletools/Disk1/InstData/{{ item }}"
+      mode: 0755
+    with_items: '{{ mod_tools }}'
+
+  - name: Generate PeopleTools Installer Script
+    template:
+      src: peopletools.sh.j2
+      dest: "{{ app_install_dir }}/peopletools/peopletools.sh"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+      mode: 0755
+
+  - name: Execute PeopleTools Installer Script
+    command: "{{ app_install_dir }}/peopletools/peopletools.sh"
+
+# ==> PEOPLETOOLS PATCH
+  - name: Extract PeopleTools Patch
+    unarchive:
+      src: "{{ app_install_dir }}/peoplepatch/{{ patch_archive }}"
+      dest: "{{ app_install_dir }}/peoplepatch"
+      remote_src: true
+
+  - name: Extract Archive from the Patch
+    unarchive:
+      src: "{{ app_install_dir }}/peoplepatch/85514.zip"
+      dest: "{{ app_install_dir }}/peoplepatch"
+      remote_src: true
+
+  - name: Modify Installer files
+    file:
+      path: "{{ app_install_dir }}/peoplepatch/cd85514/Disk1/{{ item }}"
+      mode: 0755
+    with_items: '{{ mod_files }}'
+
+  - name: Modify Installer files
+    file:
+      path: "{{ app_install_dir }}/peoplepatch/cd85514/Disk1/InstData/{{ item }}"
+      mode: 0755
+    with_items: '{{ mod_patch }}' 
+
+  - name: Generate PeopleTools Patch Installer Script
+    template:
+      src: peoplepatch.sh.j2
+      dest: "{{ app_install_dir }}/peoplepatch/peoplepatch.sh"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+      mode: 0755
+
+  - name: Execute PeopleTools Patch Installer Script
+    command: "{{ app_install_dir }}/peoplepatch/peoplepatch.sh"
+
+  tags: install_app
+  become: True
+  become_user: "{{ app_user }}"
+
+- name: Execute DB home root command
+  shell: '{{ client_home }}/root.sh'
+  changed_when: False
+  tags: install_app
+  become: True
+  become_user: root
+
+# ==> PEOPLESOFT APPLICATION (HCM)
+- block:
+  - name: Extract PeopleSoft Application Installer (HCM)
+    unarchive:
+      src: "{{ app_install_dir }}/hcm/{{ hcm_archive }}"
+      dest: "{{ app_install_dir }}/hcm"
+      remote_src: true
+
+  - name: Modify Installer files
+    file:
+      path: "{{ app_install_dir }}/hcm/Disk1/{{ item }}"
+      mode: 0755
+    with_items: '{{ mod_files }}'
+
+  - name: Modify Installer files
+    file:
+      path: "{{ app_install_dir }}/hcm/Disk1/InstData/{{ item }}"
+      mode: 0755
+    with_items: '{{ mod_tools }}'
+
+  - name: Generate Application Installer Script
+    template:
+      src: install_hcm92.sh.j2
+      dest: "{{ app_install_dir }}/hcm/install_hcm92.sh"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+      mode: 0755
+
+  - name: Execute Application Installer Script
+    command: "{{ app_install_dir }}/hcm/install_hcm92.sh"
+    register: hcm
+
+  - debug: var=hcm
+
+  tags: hcm_install
+  become: True
+  become_user: "{{ app_user }}"
+
+# ==> PEOPLESOFT APPLICATION (FSCM)
+- block:
+  - name: Extract PeopleSoft Application Installer (FSCM)
+    unarchive:
+      src: "{{ app_install_dir }}/fscm/{{ fscm_archive }}"
+      dest: "{{ app_install_dir }}/fscm"
+      remote_src: true
+
+  - name: Modify Installer files
+    file:
+      path: "{{ app_install_dir }}/fscm/Disk1/{{ item }}"
+      mode: 0755
+    with_items: '{{ mod_files }}'
+
+  - name: Modify Installer files
+    file:
+      path: "{{ app_install_dir }}/fscm/Disk1/InstData/{{ item }}"
+      mode: 0755
+    with_items: '{{ mod_tools }}'
+
+  - name: Generate Application Installer Script
+    template:
+      src: install_fscm92.sh.j2
+      dest: "{{ app_install_dir }}/fscm/install_fscm92.sh"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+      mode: 0755
+
+  - name: Execute Application Installer Script
+    command: "{{ app_install_dir }}/fscm/install_fscm92.sh"
+    register: fscm
+
+  - debug: var=fscm
+
+  tags: fscm_install
+  become: True
+  become_user: "{{ app_user }}"

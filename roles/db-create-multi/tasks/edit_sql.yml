@@ -1,0 +1,303 @@
+#################################
+# ==> EDIT DATABASE SCRIPTS <== #
+#################################
+# ==> Transfer SQL Files to DB server
+
+- block:
+  - name: Fetch SQL scripts
+    fetch:
+      src: "{{ pt_home }}/scripts/unix/pdb/{{ item }}"
+      dest: "{{ scripts_dir }}/"
+      flat: yes
+    with_items: '{{ sql_files }}'
+
+  - name: Fetch SQL scripts
+    fetch:
+      src: "{{ hcm_home }}/scripts/unix/hcddl.sql"
+      dest: "{{ scripts_dir }}/"
+      flat: yes
+
+  tags: migrate_hcm
+  become: True
+  become_user: "{{ app_user }}"
+
+- block:
+  - name: Fetch SQL scripts
+    fetch:
+      src: "{{ pt_home }}/scripts/unix/pdb/{{ item }}"
+      dest: "{{ scripts_dir }}/"
+      flat: yes
+    with_items: '{{ sql_files }}'
+
+  - name: Fetch SQL scripts
+    fetch:
+      src: "{{ fscm_home }}/scripts/unix/epddl.sql"
+      dest: "{{ scripts_dir }}/"
+      flat: yes
+
+  tags: migrate_fscm
+  become: True
+  become_user: "{{ app_user }}"
+
+- block:
+  - name: Transfer SQL scripts to Database Server
+    copy:
+      src: "{{ scripts_dir }}/"
+      dest: "{{ database_scripts }}"
+      owner: "{{ oracle_user }}"
+      group: "{{ oracle_group }}"
+
+  tags: migrate_db
+  become: True
+  become_user: root
+
+- block:
+# ==> Create Password File
+#  - name: Create Oracle Password File (orapwd utility)
+#    command: "{{ oracle_home }}/bin/orapwd file={{ oracle_home }}/dbs/{{ database_sid }}pwd password=manager entries=5"
+
+# ==> Create INIT.ORA
+  - name: Generate INIT.ORA
+    template:
+      src: init.ora.j2
+      dest: "{{ oracle_home }}/dbs/init{{ database_sid }}.ora"
+      owner: "{{ oracle_user }}"
+      group: "{{ oracle_group }}"
+
+  tags: init_ora
+  become: True
+  become_user: "{{ oracle_user }}"
+
+- block:
+# ==> Add Entry for the New Pluggable Database into tnsnames.ora and listener.ora
+  - name: Add Entry for {{ database_pdb_name }} in tnsnames.ora
+    blockinfile:
+      dest: "{{ oracle_home }}/network/admin/tnsnames.ora"
+      insertafter: BOF
+      marker: "# {mark} ANSIBLE MANAGED BLOCK"
+      state: present
+      block: |
+        {{ database_pdb_name }} =
+          (DESCRIPTION =
+            (ADDRESS = (PROTOCOL = TCP)(HOST = {{ db_host }} )(PORT = {{ db_port }}))
+            (CONNECT_DATA =
+              (SERVER = DEDICATED)
+              (SERVICE_NAME = {{ database_pdb_name }})
+            )
+          )
+        
+  - name: Add Entry for {{ database_pdb_name }} in listener.ora
+    blockinfile:
+      dest: "{{ oracle_home }}/network/admin/listener.ora"
+      insertafter: BOF
+      marker: "# {mark} ANSIBLE MANAGED BLOCK"
+      state: present
+      block: |
+        {{ database_pdb_name }}=
+         (DESCRIPTION_LIST =
+            (DESCRIPTION =
+              (ADDRESS_LIST =
+                (ADDRESS = (PROTOCOL = TCP)(HOST = {{ db_host }})(PORT = {{ db_port }}) (IP = FIRST)))
+              (ADDRESS_LIST =
+                (ADDRESS = (PROTOCOL = IPC)(KEY = extproc)))
+            )
+          )
+
+        SID_LIST_{{ database_pdb_name }}=
+           (SID_LIST=
+             (SID_DESC=
+                (ORACLE_HOME={{ oracle_home }})
+                (SID_NAME={{ database_pdb_name }})
+             )
+             (SID_DESC =
+              (SID_NAME = PLSExtProc )
+              (ORACLE_HOME={{ oracle_home }})
+              (PROGRAM = extproc)
+            )
+            )
+
+  tags: tns_db
+  become: True
+  become_user: "{{ oracle_user }}"
+
+
+- block:
+# ==> Add Entry for the New Pluggable Database into tnsnames.ora and listener.ora
+  - name: Add Entry for {{ database_pdb_name }} in tnsnames.ora
+    blockinfile:
+      dest: "{{ client_home }}/network/admin/tnsnames.ora"
+      insertafter: BOF
+      marker: "# {mark} ANSIBLE MANAGED BLOCK"
+      state: present
+      block: |
+        {{ database_pdb_name }} =
+          (DESCRIPTION =
+            (ADDRESS = (PROTOCOL = TCP)(HOST = {{ db_host }} )(PORT = {{ db_port }}))
+            (CONNECT_DATA =
+              (SERVER = DEDICATED)
+              (SERVICE_NAME = {{ database_pdb_name }})
+            )
+          )
+        
+  - name: Add Entry for {{ database_pdb_name }} in listener.ora
+    blockinfile:
+      dest: "{{ client_home }}/network/admin/listener.ora"
+      insertafter: BOF
+      marker: "# {mark} ANSIBLE MANAGED BLOCK"
+      state: present
+      block: |
+        {{ database_pdb_name }}=
+         (DESCRIPTION_LIST =
+            (DESCRIPTION =
+              (ADDRESS_LIST =
+                (ADDRESS = (PROTOCOL = TCP)(HOST = {{ db_host }})(PORT = {{ db_port }}) (IP = FIRST)))
+              (ADDRESS_LIST =
+                (ADDRESS = (PROTOCOL = IPC)(KEY = extproc)))
+            )
+          )
+
+        SID_LIST_{{ database_pdb_name }}=
+           (SID_LIST=
+             (SID_DESC=
+                (ORACLE_HOME={{ oracle_home }})
+                (SID_NAME={{ database_pdb_name }})
+             )
+             (SID_DESC =
+              (SID_NAME = PLSExtProc )
+              (ORACLE_HOME={{ oracle_home }})
+              (PROGRAM = extproc)
+            )
+            )
+
+  tags: tns_app
+  become: True
+  become_user: "{{ app_user }}"
+
+- block:
+# ==> Edit CREATEDBCDB.SQL
+  - name: Edit CREATEDBCDB.SQL
+    replace: 
+      destfile: "{{ database_scripts }}/createdbcdb.sql"
+      regexp: "{{ item.old }}"
+      replace: "{{ item.new }}"
+    with_items:
+        - { old: '/<mount>', new: "{{ oracle_base }}" }
+        - { old: '<SID>', new: "{{ database_sid }}" }
+        - { old: 'WE8ISO8859P15', new: "{{ oracle_charset }}" }
+        - { old: 'REMARK startup', new: 'startup' }
+
+  - name: Edit PTPERLCAT.SH
+    replace: 
+      destfile: "{{ database_scripts }}/ptperlcat.sh"
+      regexp: "{{ item.old }}"
+      replace: "{{ item.new }}"
+    with_items:
+        - { old: '/<mount>', new: "{{ oracle_base }}" }
+        - { old: '<SID>', new: "{{ database_sid }}" }
+
+  - name: Edit PTPERLCAT.SH
+    shell: sed -i 's|\$ORACLE_HOME|{{ oracle_home }}|g' {{ database_scripts }}/ptperlcat.sh
+        
+  - name: Change PTPERLCAT.SH Permissions
+    file:
+      path: "{{ database_scripts }}/ptperlcat.sh"
+      mode: 0755
+
+# ==> Edit CREATEPDB.SQL
+  - name: Edit CREATEPDB.SQL
+    replace: 
+      destfile: "{{ database_scripts }}/createpdb.sql"
+      regexp: "{{ item.old }}"
+      replace: "{{ item.new }}"
+    with_items:
+        - { old: '/<mount>', new: "{{ oracle_base }}" }
+        - { old: '<SID>', new: "{{ database_sid }}" }
+        - { old: '<PDB_SERVICE_NAME>', new: "{{ database_pdb_name }}" }
+
+# == Edit DBOWNER.SQL
+  - name: Edit DBOWNER.SQL
+    replace: 
+      destfile: "{{ database_scripts }}/dbowner.sql"
+      regexp: "{{ item.old }}"
+      replace: "{{ item.new }}"
+    with_items:
+        - { old: '<MANAGERPWD>', new: "{{ database_system_pass }}" }
+        - { old: '<PDB_SERVICE_NAME>', new: "{{ database_pdb_name }}" }
+
+# ==> Edit PSADMIN.SQL
+  - name: Edit PSADMIN.SQL
+    replace:
+      destfile: "{{ database_scripts }}/psadmin.sql"
+      regexp: "{{ item.old }}"
+      replace: "{{ item.new }}"
+    with_items:
+        - { old: '<MANAGERPWD>', new: "{{ database_system_pass }}" }
+        - { old: '<PDB_SERVICE_NAME>', new: "{{ database_pdb_name }}" }
+
+# ==> Edit PSROLES2.SQL
+  - name: Edit PSROLES2.SQL
+    replace:
+      destfile: "{{ database_scripts }}/psroles2.sql"
+      regexp: "{{ item.old }}"
+      replace: "{{ item.new }}"
+    with_items:
+        - { old: '<PDB_SERVICE_NAME>', new: "{{ database_pdb_name }}" }
+        
+# ==> Edit PTDDL.SQL
+  - name: Edit PTDDL.SQL
+    replace: 
+      destfile: "{{ database_scripts }}/ptddl.sql"
+      regexp: "{{ item.old }}"
+      replace: "{{ item.new }}"
+    with_items:
+        - { old: '/<mount>', new: "{{ oracle_base }}" }
+        - { old: '<SID>', new: "{{ database_sid }}" }
+        - { old: '<PDB_SERVICE_NAME>', new: "{{ database_pdb_name }}" }
+        - { old: 'REMARK', new: '' }
+        
+# ==> Edit UTLSPACE.SQL
+  - name: Edit UTLSPACE.SQL
+    replace: 
+      destfile: "{{ database_scripts }}/utlspace.sql"
+      regexp: "{{ item.old }}"
+      replace: "{{ item.new }}"
+    with_items:
+        - { old: '/<mount>', new: "{{ oracle_base }}" }
+        - { old: '<SID>', new: "{{ database_sid }}" }
+        - { old: '<PDB_SERVICE_NAME>', new: "{{ database_pdb_name }}" }
+
+  tags: prepare_script
+  become: True
+  become_user: "{{ oracle_user }}"
+
+# ==> Edit HCDDL.SQL (HCM)
+- block:
+  - name: Edit HCDDL.sql
+    replace: 
+      destfile: "{{ database_scripts }}/hcddl.sql"
+      regexp: "{{ item.old }}"
+      replace: "{{ item.new }}"
+    with_items:
+        - { old: '/u04', new: "{{ oracle_base }}" }
+        - { old: '<SID>', new: "{{ database_sid }}/{{ database_pdb_name }}" }
+        - { old: 'REMARK', new: '' }
+
+  tags: prepare_hcm
+  become: True
+  become_user: "{{ oracle_user }}"
+
+# ==> Edit EPDDL.SQL (FSCM)
+- block:
+  - name: Edit HCDDL.sql
+    replace: 
+      destfile: "{{ database_scripts }}/epddl.sql"
+      regexp: "{{ item.old }}"
+      replace: "{{ item.new }}"
+    with_items:
+        - { old: '/u04', new: "{{ oracle_base }}" }
+        - { old: '<SID>', new: "{{ database_sid }}/{{ database_pdb_name }}" }
+        - { old: 'REMARK', new: '' }
+
+  tags: prepare_fscm
+  become: True
+  become_user: "{{ oracle_user }}"

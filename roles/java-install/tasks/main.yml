@@ -1,0 +1,44 @@
+# ==> INSTALL JAVA <== #
+
+- block:
+  - name: Transfer Java RPM File (DATABASE)
+    copy:
+      src: "{{ java_rpm_dir }}/{{ java_rpm_file }}"
+      dest: "/tmp/{{ java_rpm_file }}"
+
+  - name: Install Java
+    yum:
+      name: "/tmp/{{ java_rpm_file }}"
+      state: present
+
+  - name: Configure installed java
+    alternatives:
+      name: java
+      path: "/usr/java/{{ java_location }}"
+      link: "{{ java_symlink }}"
+
+  tags: install_db
+  become: True
+  become_user: root
+
+- block:
+  - name: Transfer Java RPM File (APP)
+    copy:
+      src: "{{ java_rpm_dir2 }}/{{ java_rpm_file2 }}"
+      dest: "/tmp/{{ java_rpm_file2 }}"
+
+  - name: Install Java
+    yum:
+      name: "/tmp/{{ java_rpm_file2 }}"
+      state: present
+
+  - name: Configure installed java
+    alternatives:
+      name: java
+      path: "/usr/java/{{ java_location2 }}"
+      link: "{{ java_symlink }}"
+
+  tags: install_app
+  become: True
+  become_user: root
+

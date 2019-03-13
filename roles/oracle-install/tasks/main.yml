@@ -1,0 +1,130 @@
+################################################################################
+### ==> Tasks for oracle-install role. This role installs the Oracle Database
+### ==> 12c software
+##################################################################################
+#
+## ==> add swap space
+- block:
+  - name: Check Swapfile
+    stat: path={{ swap_location }}
+    register: swapfile
+
+  - name: Create storage file
+    command: dd if={{ dev_zero }} of={{ swap_location }} bs={{ swap_bs }} count={{ swap_count }}
+    changed_when: False
+    when: "swapfile.stat.exists == False"
+
+  - name: Change file permission of storage file
+    file: path={{ swap_location }} mode=0600
+    when: "swapfile.stat.exists == False"
+
+  - name: Set up swap area
+    command: mkswap {{ swap_location }}
+    changed_when: False
+    when: "swapfile.stat.exists == False"
+
+  - name: Enable swap file
+    command: swapon {{ swap_location }}
+    changed_when: False
+    when: "swapfile.stat.exists == False"
+
+  - name: Append line to etc/fstab
+    lineinfile: dest=/etc/fstab line="{{ swap_location }} none swap sw 0 0"
+    when: "swapfile.stat.exists == False"
+
+  - name: Verify whether swap is actived
+    command: free -m
+    changed_when: False
+
+  - name: Display swap usage
+    command: swapon -s
+    register: swapon_summary
+    changed_when: False
+
+  - name: Debug swap usage
+    debug: var=swapon_summary
+
+# ==> Copy Database Installer
+  - name: Transfer Installer to Target DB Server
+    copy:
+      src: "{{ db_artifact_dir }}/{{ item }}"
+      dest: "{{ database_install_dir }}"
+      owner: "{{ oracle_user }}"
+      group: "{{ oracle_group }}"
+    with_items: '{{ installer_archives }}'
+
+  tags: install_db
+  become: True
+  become_user: root
+        
+# ==> Extract Database Installer
+- block:
+  - name: Extract Installer Archives
+    unarchive:
+      src: "{{ database_install_dir }}/{{ item }}"
+      dest: "{{ database_install_dir }}"
+      remote_src: true
+    with_items: '{{ installer_archives }}'
+
+# ==> Generate Response File
+  - name: Generate DB Resposne File
+    template:
+      src: db_install.rsp.j2
+      dest: "{{ database_install_dir }}/db_install.rsp"
+
+  - name: Get Hostname
+    command: hostname -i
+    register: hostname
+    changed_when: False
+
+  - name: Assign value to HOSTNAME
+    replace:
+      dest: "{{ database_install_dir }}/db_install.rsp"
+      regexp: "##HOSTNAME##"
+      replace: "{{ hostname.stdout_lines[0] }}"
+
+# ==> execute installation
+  - name: Install Product
+    command: '{{ database_install_dir }}/database/runInstaller  -ignorePrereq -ignoreSysPrereqs -silent -waitforcompletion -responseFile {{ database_install_dir }}/db_install.rsp'
+    changed_when: False
+
+  - name:
+    shell: echo "{{ multi_architecture }}" 
+    register: multi
+
+  - set_fact: tns_ora="tnsnames.ora.j2" lsnr_ora="listener.ora.j2"
+    when: multi.stdout == "TRUE"
+
+  - set_fact: tns_ora="tnsnames2.ora.j2" lsnr_ora="listener2.ora.j2"
+    when: multi.stdout == "FALSE"
+
+  - name: Generate listener.ora and tnsnames.ora
+    template:
+      src: "{{ item.old }}"
+      dest: "{{ oracle_home }}/network/admin/{{ item.new }}"
+    with_items:
+        - { old: '{{ lsnr_ora }}', new: 'listener.ora' }
+        - { old: '{{ tns_ora }}', new: 'tnsnames.ora' }
+
+  - name: Get Hostname
+    command: hostname -i
+    register: hostname
+    changed_when: False
+
+  - name: Assign Value to HOSTNAME
+    replace: dest={{ item }} regexp=##HOSTNAME## replace={{ hostname.stdout_lines[0] }}
+    with_items:
+      - "{{ oracle_home }}/network/admin/listener.ora"
+      - "{{ oracle_home }}/network/admin/tnsnames.ora"
+
+  tags: install_db
+  become: True
+  become_user: oracle
+
+# ==> execute DB home command as root
+- name: Execute DB home root command
+  shell: '{{ oracle_home }}/root.sh'
+  changed_when: False
+  tags: install_db
+  become: True
+  become_user: root

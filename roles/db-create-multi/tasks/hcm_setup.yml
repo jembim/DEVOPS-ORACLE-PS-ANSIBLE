@@ -1,0 +1,475 @@
+###################################
+#==> COMPLETING DATABASE SETUP <==#
+###################################
+
+# ==> Updating PeopleTools System Tables
+- block:
+# ==> Grant Connect ID
+  - name: Edit GRANT.SQL
+    replace: 
+      destfile: "{{ pt_home }}/scripts/grant.sql"
+      regexp: "{{ item.old }}"
+      replace: "{{ item.new }}"
+    with_items:
+        - { old: '<CONNECTID>', new: "{{ ps_connect_id }}" }
+
+  - name: Grant Permissions to the Connect ID
+    shell: 'echo "@{{ pt_home }}/scripts/grant.sql" | sqlplus {{ ps_access_id }}/{{ ps_access_pass }}@{{ database_pdb_name }}'
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+
+# ==> Update PeopleSoft PeopleTools Database Messages
+  - name: Edit MSGTLSUPG.DMS
+    replace:
+      destfile: "{{ pt_home }}/scripts/msgtlsupg.dms"
+      regexp: "{{ item.old }}"
+      replace: "{{ item.new }}"
+    with_items:
+        - { old: 'SET LOG MSGTLSUPG.LOG', new: 'SET LOG {{ pt_home }}/log/msgtlsupg.log' }
+        - { old: 'SET INPUT MSGTLENG.DAT', new: 'SET INPUT {{ pt_home }}/data/msgtleng.dat' }
+
+  - name: Update PeopleSoft PeopleTools Database Messages (MSGTLSUPG.DMS)
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && {{ pt_home }}/bin/psdmtx -CT {{ db_type }} -CD {{ database_pdb_name }} -CO {{ ps_access_id }} -CP {{ ps_access_pass }} -CI {{ ps_connect_id }} -CW {{ ps_connect_pass }} -FP {{ pt_home }}/scripts/msgtlsupg.dms"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+
+# ==> Run PTPATCH.DMS
+  - name: Edit PTPATCH.DMS
+    replace:
+      destfile: "{{ pt_home }}/scripts/ptpatch.dms"
+      regexp: "SET LOG PTPATCH.LOG"
+      replace: "SET LOG {{ pt_home }}/log/ptpatch.log"
+
+  - name: Run PTPATCH.DMS
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && {{ pt_home }}/bin/psdmtx -CT {{ db_type }} -CD {{ database_pdb_name }} -CO {{ ps_access_id }} -CP {{ ps_access_pass }} -CI {{ ps_connect_id }} -CW {{ ps_connect_pass }} -FP {{ pt_home }}/scripts/ptpatch.dms"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+
+# ==> Run STOREDDL.DMS
+  - name: Edit STOREDDL.DMS
+    replace:
+      destfile: "{{ pt_home }}/scripts/storeddl.dms"
+      regexp: "{{ item.old }}"
+      replace: "{{ item.new }}"
+    with_items:
+        - { old: 'SET LOG STOREDDL.LOG', new: 'SET LOG {{ pt_home }}/log/storeddl.log' }
+        - { old: 'DDLDB2.DMS', new: 'ddldb2.dms' }
+        - { old: 'DDLDBX.DMS', new: 'ddldbx.dms' }
+        - { old: 'DDLMSS.DMS', new: 'ddlmss.dms' }
+        - { old: 'DDLORA.DMS', new: 'ddlora.dms' }
+
+  - name: Run STOREDDL.DMS
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && {{ pt_home }}/bin/psdmtx -CT {{ db_type }} -CD {{ database_pdb_name }} -CO {{ ps_access_id }} -CP {{ ps_access_pass }} -CI {{ ps_connect_id }} -CW {{ ps_connect_pass }} -FP {{ pt_home }}/scripts/storeddl.dms"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+
+  tags: sys_tables_hcm
+  become: True
+  become_user: "{{ app_user }}"
+
+# ==> Updating PeopleTools Database
+# ==> Copy Project Folder
+- block:
+  - name: Copy Project Artifact to PS_HOME
+    copy:
+      src: "{{ projects_dir }}/{{ project }}"
+      dest: "{{ pt_home }}"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Extract Project Artifact
+    unarchive:
+      src: "{{ pt_home }}/{{ project }}"
+      dest: "{{ pt_home }}"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+      remote_src: true
+
+# ==> Updating PeopleTools Database Objects
+  - name: Update PeopleTools Database Objects
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && {{ pt_home }}/bin/psidex -COPYFROMFILE -HIDE -QUIET -CT {{ db_type }} -CS {{ db_host }} -CD {{ database_pdb_name }} -CO {{ ps_user_id }} -CP {{ ps_user_pass }} -CI {{ ps_connect_id }} -CW {{ ps_connect_pass }} -PJFF PPLTLS84CUR -FP {{ pt_home }}/projects -LF {{ pt_home }}/log/dbobjects.log"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+
+# ==> Deleting Obsolete PeopleTools Database Objects
+  - name: Delete Obsolete PeopleTools Database Objects
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && {{ pt_home }}/bin/psidex -COPYFROMFILE -HIDE -QUIET -CT {{ db_type }} -CS {{ db_host }} -CD {{ database_pdb_name }} -CO {{ ps_user_id }} -CP {{ ps_user_pass }} -CI {{ ps_connect_id }} -CW {{ ps_connect_pass }} -PJFF PPLTLS84CURDEL -FP {{ pt_home }}/projects -LF {{ pt_home }}/log/delobjects.log" 
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+
+# ==> Applying Patched PeopleTools Database Objects
+  - name: Apply Patched PeopleTools Database Objects
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && {{ pt_home }}/bin/psidex -COPYFROMFILE -HIDE -QUIET -CT {{ db_type }} -CS {{ db_host }} -CD {{ database_pdb_name }} -CO {{ ps_user_id }} -CP {{ ps_user_pass }} -CI {{ ps_connect_id }} -CW {{ ps_connect_pass }} -PJFF PATCH855 -FP {{ pt_home }}/projects -LF {{ pt_home }}/log/ptpatch.log"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+
+# ==> Altering PeopleTools Tables
+  - name: Generate Build Settings File
+    template:
+      src: buildsettings.REG.j2
+      dest: "{{ app_install_dir }}/scripts/buildsettings.REG"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Alter PeopleTools Tables
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && {{ pt_home }}/bin/psidex -BUILDPRJ -HIDE -QUIET -CT {{ db_type }} -CS {{ db_host }} -CD {{ database_pdb_name }} -CO {{ ps_user_id }} -CP {{ ps_user_pass }} -CI {{ ps_connect_id }} -CW {{ ps_connect_pass }} -PJB PPLTLS84CUR -CFG {{ app_install_dir }}/scripts/buildsettings.REG -LF {{ pt_home }}/log/altertable.log"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+
+  - name: Execute PSBUILD.SQL
+    shell: 'echo "@{{ pt_home }}/log/psbuild.sql" | sqlplus {{ ps_access_id }}/{{ ps_access_pass }}@{{ database_pdb_name }}'
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+
+    register: psbuildA
+
+  - debug: var=psbuildA
+
+# ==> Migrating Records to New Tablespaces
+  - name: Generate Build Settings File
+    template:
+      src: buildsettings2.REG.j2
+      dest: "{{ app_install_dir }}/scripts/buildsettings2.REG"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Copying the Tablespace Record Project
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && {{ pt_home }}/bin/psidex -COPYFROMFILE -HIDE -QUIET -CT {{ db_type }} -CS {{ db_host }} -CD {{ database_pdb_name }} -CO {{ ps_user_id }} -CP {{ ps_user_pass }} -CI {{ ps_connect_id }} -CW {{ ps_connect_pass }} -PJFF PT84TBLSPC -FP {{ pt_home }}/projects -LF {{ pt_home }}/log/cprecord.log"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+
+  - name: Running Alter Tools Tables
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && {{ pt_home }}/bin/psidex -BUILDPRJ -HIDE -QUIET -CT {{ db_type }} -CS {{ db_host }} -CD {{ database_pdb_name }} -CO {{ ps_user_id }} -CP {{ ps_user_pass }} -CI {{ ps_connect_id }} -CW {{ ps_connect_pass }} -PJB PT84TBLSPC -CFG {{ app_install_dir }}/scripts/buildsettings2.REG -LF {{ pt_home }}/log/altertools.log"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+
+  - name: Execute PSBUILD.SQL
+    shell: 'echo "@{{ pt_home }}/log/psbuild.sql" | sqlplus {{ ps_access_id }}/{{ ps_access_pass }}@{{ database_pdb_name }}'
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+
+    register: psbuildB
+
+  - debug: var=psbuildB
+
+  tags: update_db_hcm
+  become: True
+  become_user: "{{ app_user }}"
+
+#==================================#
+# =========> Data Mover < ======== #
+# Updating PeopleTools System Data #
+#==================================#
+- block:
+# ==> Load Language-Specific Data (pslanguages.dms)
+  - name: Edit PSLANGUAGES.DMS
+    replace:
+      destfile: "{{ pt_home }}/scripts/pslanguages.dms"
+      regexp: "{{ item.old }}"
+      replace: "{{ item.new }}"
+    with_items:
+        - { old: 'SET LOG PSLANGUAGES.LOG', new: 'SET LOG {{ pt_home }}/log/pslanguages.log' }
+        - { old: 'SET INPUT PSLANGUAGES.DAT', new: 'SET INPUT {{ pt_home }}/data/pslanguages.dat' }
+
+  - name: Load Language-Specific Data (pslanguages.dms)
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && {{ pt_home }}/bin/psdmtx -CT {{ db_type }} -CD {{ database_pdb_name }} -CO {{ ps_access_id }} -CP {{ ps_access_pass }} -CI {{ ps_connect_id }} -CW {{ ps_connect_pass }} -FP {{ pt_home }}/scripts/pslanguages.dms"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+
+# ==> Import Update PoepleSoft PeopleTools Trees, Roles, and Access Groups
+  - name: Edit TLSUPGNONCOMP.DMS
+    replace:
+      destfile: "{{ pt_home }}/scripts/tlsupgnoncomp.dms"
+      regexp: "{{ item.old }}"
+      replace: "{{ item.new }}"
+    with_items:
+        - { old: 'SET LOG TLSUPGNONCOMP.LOG', new: 'SET LOG {{ pt_home }}/log/tlsupgnoncomp.log' }
+        - { old: 'SET INPUT TLSUPGNONCOMP.DAT', new: 'SET INPUT {{ pt_home }}/data/tlsupgnoncomp.dat' }
+        
+  - name: Import Update PoepleSoft PeopleTools Trees, Roles, and Access Groups (tlsupgnoncomp.dms)
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && {{ pt_home }}/bin/psdmtx -CT {{ db_type }} -CD {{ database_pdb_name }} -CO {{ ps_access_id }} -CP {{ ps_access_pass }} -CI {{ ps_connect_id }} -CW {{ ps_connect_pass }} -FP {{ pt_home }}/scripts/tlsupgnoncomp.dms"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+
+# ==> Update Messages In Database
+  - name: Edit MSGTLENG.DMS
+    replace:
+      destfile: "{{ pt_home }}/scripts/msgtleng.dms"
+      regexp: "{{ item.old }}"
+      replace: "{{ item.new }}"
+    with_items:
+        - { old: 'SET LOG msgtleng.log', new: 'SET LOG {{ pt_home }}/log/msgtleng.log' }
+        - { old: 'SET INPUT msgtleng.dat', new: 'SET INPUT {{ pt_home }}/data/msgtleng.dat' }
+
+  - name: Update Messages in Database (msgtleng.dms)
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && {{ pt_home }}/bin/psdmtx -CT {{ db_type }} -CD {{ database_pdb_name }} -CO {{ ps_access_id }} -CP {{ ps_access_pass }} -CI {{ ps_connect_id }} -CW {{ ps_connect_pass }} -FP {{ pt_home }}/scripts/msgtleng.dms"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+  
+# ==> Update SQR Strings In Database (THIS HAS SOME ERROR REGARDING CONSTRAINT)
+  - name: Edit PTSTRENG.DMS
+    replace:
+      destfile: "{{ pt_home }}/scripts/ptstreng.dms"
+      regexp: "{{ item.old }}"
+      replace: "{{ item.new }}"
+    with_items:
+        - { old: 'SET LOG PTSTRENG.LOG', new: 'SET LOG {{ pt_home }}/log/ptstreng.log' }
+        - { old: 'SET INPUT ptstreng.dat', new: 'SET INPUT {{ pt_home }}/data/ptstreng.dat' }
+
+  - name: Update SQR Strings In Database (ptstreng.dms)
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && {{ pt_home }}/bin/psdmtx -CT {{ db_type }} -CD {{ database_pdb_name }} -CO {{ ps_access_id }} -CP {{ ps_access_pass }} -CI {{ ps_connect_id }} -CW {{ ps_connect_pass }} -FP {{ pt_home }}/scripts/ptstreng.dms"
+    ignore_errors: yes
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+
+  - name: Drop Unique Constraint
+    shell: 'echo "DROP TABLE PS_STRINGS_TBL;" | sqlplus {{ ps_access_id }}/{{ ps_access_pass }}@{{ database_pdb_name }}'
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+
+    register: drop
+
+  - debug: var=drop
+
+  - name: Rerun ptstreng.dms
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && {{ pt_home }}/bin/psdmtx -CT {{ db_type }} -CD {{ database_pdb_name }} -CO {{ ps_access_id }} -CP {{ ps_access_pass }} -CI {{ ps_connect_id }} -CW {{ ps_connect_pass }} -FP {{ pt_home }}/scripts/ptstreng.dms"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+
+# ==> Update PeopleSoft PeopleTools COBOL stored statements
+  - name: Edit STOREPT.DMS
+    replace:
+      destfile: "{{ pt_home }}/src/cbl/STOREPT.DMS"
+      regexp: "SET LOG STOREPT.LOG"
+      replace: "SET LOG {{ pt_home}}/log/storept.log"
+
+  - name: Update PeopleSoft PeopleTools COBOL stored statements (storept.dms)
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && {{ pt_home }}/bin/psdmtx -CT {{ db_type }} -CD {{ database_pdb_name }} -CO {{ ps_access_id }} -CP {{ ps_access_pass }} -CI {{ ps_connect_id }} -CW {{ ps_connect_pass }} -FP {{ pt_home }}/src/cbl/STOREPT.DMS"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+
+# ==> Update PeopleSoft PeopleTools Definition Security group (THIS HAS SOME ERROR REGARDING CONSTRAINT)
+  - name: Edit PTDEFNSEC.DMS
+    replace:
+      destfile: "{{ pt_home }}/scripts/ptdefnsec.dms"
+      regexp: "{{ item.old }}"
+      replace: "{{ item.new }}"
+    with_items:
+        - { old: 'SET LOG PTDEFNSEC.LOG', new: 'SET LOG {{ pt_home }}/log/ptdefnsec.log' }
+        - { old: 'SET INPUT DEFNSEC.DAT', new: 'SET INPUT {{ pt_home }}/data/defnsec.dat' }
+        
+  - name: Update PeopleSoft PeopleTools Definition Security group (ptdefnsec.dms)
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && {{ pt_home }}/bin/psdmtx -CT {{ db_type }} -CD {{ database_pdb_name }} -CO {{ ps_access_id }} -CP {{ ps_access_pass }} -CI {{ ps_connect_id }} -CW {{ ps_connect_pass }} -FP {{ pt_home }}/scripts/ptdefnsec.dms"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+  
+# ==> Compile All Directive Codes In Database
+  - name: Compile All Directive Codes In Database
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && {{ pt_home }}/bin/psidex -CMPDIRPC -HIDE -QUIET -CT {{ db_type }} -CS {{ db_host }} -CD {{ database_pdb_name }} -CO {{ ps_user_id }} -CP {{ ps_user_pass }} -CI {{ ps_connect_id }} -CW {{ ps_connect_pass }} -LF {{ pt_home }}/log/compile.log"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+  
+# ==> Recreate All The Views In Database (createvw.dms)
+  - name: Edit CREATEVW.DMS
+    replace: 
+      destfile: "{{ pt_home }}/scripts/createvw.dms"
+      regexp: 'SET LOG CREATEVW.LOG'
+      replace: "SET LOG {{ pt_home }}/log/createvw.log"
+    
+  - name: Recreate All The Views In Database (createvw.dms)
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && {{ pt_home }}/bin/psdmtx -CT {{ db_type }} -CD {{ database_pdb_name }} -CO {{ ps_access_id }} -CP {{ ps_access_pass }} -CI {{ ps_connect_id }} -CW {{ ps_connect_pass }} -FP {{ pt_home }}/scripts/createvw.dms"
+    ignore_errors: yes
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+
+  tags: update_data_hcm
+  become: True
+  become_user: "{{ app_user }}"
+
+# =============================== #
+# Running PeopleTools Conversions #
+# =============================== #
+- block:
+  - name: Populating the Feed Options Table
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && {{ pt_home }}/bin/psae -CD {{ database_pdb_name }} -CT {{ db_type }} -CO {{ ps_user_id }} -CP {{ ps_user_pass }} -CI {{ ps_connect_id }} -CW {{ ps_connect_pass }} -R INSTALL -AI UPGPT850PTFP"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+ 
+  - name: Updating Feeds for Active Data Guard
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && {{ pt_home }}/bin/psae -CD {{ database_pdb_name }} -CT {{ db_type }} -CO {{ ps_user_id }} -CP {{ ps_user_pass }} -CI {{ ps_connect_id }} -CW {{ ps_connect_pass }} -R INSTALL -AI UPGPT852PTFP"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+
+  - name: Updating Web Profiles
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && {{ pt_home }}/bin/psae -CD {{ database_pdb_name }} -CT {{ db_type }} -CO {{ ps_user_id }} -CP {{ ps_user_pass }} -CI {{ ps_connect_id }} -CW {{ ps_connect_pass }} -R INSTALL -AI UPGPTWBPFNVP"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+
+  - name: Updating Chart and Grid Filters
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && {{ pt_home }}/bin/psae -CD {{ database_pdb_name }} -CT {{ db_type }} -CO {{ ps_user_id }} -CP {{ ps_user_pass }} -CI {{ ps_connect_id }} -CW {{ ps_connect_pass }} -R INSTALL -AI UPGPTPGFLRS"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+
+  - name: Populating the Hash Values
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && {{ pt_home }}/bin/psae -CD {{ database_pdb_name }} -CT {{ db_type }} -CO {{ ps_user_id }} -CP {{ ps_user_pass }} -CI {{ ps_connect_id }} -CW {{ ps_connect_pass }} -R INSTALL -AI UPGPTHASH"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+
+  - name: Populating the DB-Cache Lock Table
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && {{ pt_home }}/bin/psae -CD {{ database_pdb_name }} -CT {{ db_type }} -CO {{ ps_user_id }} -CP {{ ps_user_pass }} -CI {{ ps_connect_id }} -CW {{ ps_connect_pass }} -R INSTALL -AI UPGPT851DBC"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+
+  - name: Running Additional PeopleTools Conversions
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && {{ pt_home }}/bin/psae -CD {{ database_pdb_name }} -CT {{ db_type }} -CO {{ ps_user_id }} -CP {{ ps_user_pass }} -CI {{ ps_connect_id }} -CW {{ ps_connect_pass }} -R INSTALL -AI UPGPTSERVOPR"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+
+# ==> Running VERSION Application Engine Program
+  - name: Running VERSION Application Engine Program
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && {{ pt_home }}/bin/psae -CD {{ database_pdb_name }} -CT {{ db_type }} -CO {{ ps_user_id }} -CP {{ ps_user_pass }} -CI {{ ps_connect_id }} -CW {{ ps_connect_pass }} -R RESETVERSIONS -AI VERSION"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+
+  tags: app_engine_hcm
+  become: True
+  become_user: "{{ app_user }}"
+
+# =================== #
+# Running SQR Reports #
+# =================== #
+- block:
+
+  - name: Generate Template (DDDAUDIT.SQR)
+    template:
+      src: dddaudit.sh.j2
+      dest: "{{ app_install_dir }}/scripts/dddaudit.sh"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+      mode: 0755
+
+  - name: Running SQR Reports (DDDAUDIT.SQR)
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && {{ app_install_dir }}/scripts/dddaudit.sh"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+
+  - name: Generate Template (SYSAUDIT.SH)
+    template:
+      src: sysaudit.sh.j2
+      dest: "{{ app_install_dir }}/scripts/sysaudit.sh"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+      mode: 0755
+  
+  - name: Running SQR Reports (SYSAUDIT.SH)
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && {{ app_install_dir }}/scripts/sysaudit.sh"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+
+  - name: Running SQR Reports (SETSPACE.SQR)
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && {{ pt_home }}/bin/sqr/ORA/bin/sqr {{ pt_home }}/sqr/setspace.sqr {{ ps_access_id }}/{{ ps_access_pass }}@{{ database_pdb_name }} -ZIF{{ pt_home }}/sqr/pssqr.unx -i{{ pt_home }}/sqr/"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+
+  tags: sqr_reports_hcm
+  become: True
+  become_user: "{{ app_user }}"

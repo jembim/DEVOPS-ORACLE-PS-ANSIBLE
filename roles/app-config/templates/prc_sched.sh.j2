@@ -1,0 +1,46 @@
+#!/bin/bash
+
+expect << END
+set timeout 3
+spawn {{ pt_home }}/bin/psadmin
+expect -re "Command to execute (1-7, q):"
+send "2\r"
+expect -re "Command to execute (1-4, q) :"
+send "2\r"
+expect -re "Please enter name of domain to create :"
+send "{{ database_pdb_name }}\r"
+expect -re "Enter selection (1-19, h, or q):"
+send "12\r"
+expect -re "Enter new value for UserId \[QEDMO\]:"
+send "{{ ps_user_id }}\r"
+expect -re "Enter selection (1-19, h, or q):"
+send "13\r"
+expect -re "Enter new value for UserPswd []:"
+send "{{ ps_user_pass }}\r"
+expect -re "Reenter the UserPswd :"
+send "{{ ps_user_pass }}\r"
+expect -re "Enter selection (1-19, h, or q):"
+send "14\r"
+expect -re "Enter new value for ConnectID \[people\]:"
+send "{{ ps_connect_id }}\r"
+expect -re "Enter selection (1-19, h, or q):"
+send "15\r"
+expect -re "Enter new value for ConnectPswd []:"
+send "{{ ps_connect_pass }}\r"
+expect -re "Reenter the ConnectPswd :"
+send "{{ ps_connect_pass }}\r"
+expect -re "Enter selection (1-19, h, or q):"
+send "16\r"
+expect -re "Enter new value for Log/Output Dir \[%PS_SERVDIR%/log_output\]:"
+send "{{ pt_home }}/PS_CACHE/LOGS\r"
+expect -re "Enter selection (1-19, h, or q):"
+send "17\r"
+expect -re "Enter new value for SQRBIN \[%PS_HOME%/bin/sqr/%PS_DB%/bin\]:"
+send "{{ pt_home }}/bin/sqr/ORA/bin\r"
+expect -re "Enter selection (1-19, h, or q):"
+send "6\r"
+expect -re "Command to execute (1-7, q) :"
+send "1\r"
+set timeout 480
+expect eof
+END

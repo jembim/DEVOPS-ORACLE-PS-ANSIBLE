@@ -1,0 +1,194 @@
+##################################################
+# ==> CONFIGURE APP, PIA & PROCESS SCHEDULER <== #
+##################################################
+- block:
+
+  - name:
+    shell: echo "{{ multi_architecture }}" 
+    register: multi
+
+  - set_fact: app_conf="config_app.sh.j2" prc_conf="prc_sched.sh.j2"
+    when: multi.stdout == "TRUE"
+
+  - set_fact: app_conf="config_app2.sh.j2" prc_conf="prc_sched2.sh.j2"
+    when: multi.stdout == "FALSE"
+
+  tags: var_condi
+
+# ==> CONFIGURE APPLICATION (HCM)
+- block:
+  - name: Generate Script for Application Configuration
+    template:
+      src: "{{ app_conf }}"
+      dest: "{{ app_install_dir }}/scripts/config_app.sh"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+      mode: 0755
+
+  - name: Execute Script
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{{ client_home }}/lib && {{ app_install_dir }}/scripts/config_app.sh"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+    register: app
+
+  - debug: var=app
+
+  tags: config_app_hcm
+  become: True
+  become_user: "{{ app_user }}"
+
+# ==> CONFIGURE APPLICATION (FSCM)
+- block:
+  - name: Generate Script for Application Configuration
+    template:
+      src: "{{ app_conf }}"
+      dest: "{{ app_install_dir }}/scripts/config_app.sh"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+      mode: 0755
+
+  - name: Execute Script
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{{ client_home }}/lib && {{ app_install_dir }}/scripts/config_app.sh"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ fscm_home }}"
+    register: app
+
+  - debug: var=app
+
+  tags: config_app_fscm
+  become: True
+  become_user: "{{ app_user }}"
+
+# ==> INSTALL PIA (HCM)
+- block:
+  - name: Generate PIA Response File
+    template:
+      src: pia_install.rsp.j2
+      dest: "{{ app_install_dir }}/scripts/pia_install.rsp"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Execute PIA Installation
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{{ client_home }}/lib && {{ pt_home }}/setup/PsMpPIAInstall/setup.sh -i silent -DRES_FILE_PATH={{ app_install_dir }}/scripts/pia_install.rsp"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+
+  - name: Verify PIA Installation
+    shell: 'cat {{ ps_cfg_home }}/webserv/piainstall_{{ pia_domain }}.log | tail -n 10'
+    register: pia_log
+
+  - debug: var=pia_log
+
+  tags: pia_install_hcm
+  become: True
+  become_user: "{{ app_user }}"
+
+# ==> INSTALL PIA (FSCM)
+- block:
+  - name: Generate PIA Response File
+    template:
+      src: pia_install.rsp.j2
+      dest: "{{ app_install_dir }}/scripts/pia_install.rsp"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+
+  - name: Execute PIA Installation
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{{ client_home }}/lib && {{ pt_home }}/setup/PsMpPIAInstall/setup.sh -i silent -DRES_FILE_PATH={{ app_install_dir }}/scripts/pia_install.rsp"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ fscm_home }}"
+
+  - name: Verify PIA Installation
+    shell: 'cat {{ ps_cfg_home }}/webserv/piainstall_{{ pia_domain }}.log | tail -n 10'
+    register: pia_log
+
+  - debug: var=pia_log
+
+  tags: pia_install_fscm
+  become: True
+  become_user: "{{ app_user }}"
+
+# ==> START PIA
+- block:
+  - name: Start PIA
+    shell: '{{ ps_cfg_home }}/webserv/{{ pia_domain }}/bin/startPIA.sh'
+    async: 60
+    poll: 10
+    register: pia
+
+  - debug: var=pia
+
+  - name: Waiting for PIA Startup Log File
+    pause:
+      minutes: 2
+
+  - name: Verify PIA Startup
+    shell: 'cat {{ ps_cfg_home }}/webserv/{{ pia_domain }}/servers/PIA/logs/PIA_stdout.log | grep "RUNNING"'
+    register: pia_startlog
+
+  - debug: var=pia_startlog
+
+  tags: start_pia
+  become: True
+  become_user: "{{ app_user }}"
+
+# ==> CONFIGURE PROCESS SCHEDULER (HCM)
+- block:
+  - name: Generate Script for Process Scheduler Setup
+    template:
+      src: "{{ prc_conf }}"
+      dest: "{{ app_install_dir }}/scripts/prc_sched.sh"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+      mode: 0755
+
+  - name: Execute Script
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{{ client_home }}/lib && {{ app_install_dir }}/scripts/prc_sched.sh"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ hcm_home }}"
+    register: prc_sched
+
+  - debug: var=prc_sched
+
+  tags: prc_sched_hcm
+  become: True
+  become_user: "{{ app_user }}"
+
+# ==> CONFIGURE PROCESS SCHEDULER (FSCM)
+- block:
+  - name: Generate Script for Process Scheduler Setup
+    template:
+      src: "{{ prc_conf }}"
+      dest: "{{ app_install_dir }}/scripts/prc_sched.sh"
+      owner: "{{ app_user }}"
+      group: "{{ oracle_group }}"
+      mode: 0755
+
+  - name: Execute Script
+    shell: "source {{ tuxedo_home }}/tuxedo12.1.3.0.0/tux.env && source {{ pt_home }}/psconfig.sh && export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{{ client_home }}/lib && {{ app_install_dir }}/scripts/prc_sched.sh"
+    environment:
+      ORACLE_HOME: '{{ client_home }}'
+      PATH: "{{ lookup('env', 'PATH')}}:{{ client_home }}/bin"
+      PS_CFG_HOME: "{{ ps_cfg_home }}"
+      PS_APP_HOME: "{{ fscm_home }}"
+    register: prc_sched
+
+  - debug: var=prc_sched
+
+  tags: prc_sched_fscm
+  become: True
+  become_user: "{{ app_user }}"

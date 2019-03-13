@@ -1,0 +1,14 @@
+#!/bin/bash
+
+expect << END
+spawn sqlplus system/manager@{{ database_pdb_name }}
+expect -re "SQL>"
+send "@{{ database_scripts }}/psadmin.sql\r"
+expect -re "Enter name of PeopleSoft Owner ID(max. 8 characters):"
+send "{{ ps_access_id }}\r"
+expect -re "Enter PeopleSoft Owner ID password(max. 30 characters):"
+send "{{ ps_access_pass }}\r"
+expect -re "Enter desired default tablespace:"
+send "PSDEFAULT\r"
+expect eof
+END
